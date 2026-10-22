@@ -15,9 +15,11 @@
     },
     {
       "matches": ["https://game.maj-soul.com/*"],
-      "js": ["state.js", "overlay.js"],
+      "js": ["state.js", "history.js", "overlay.js"],
       "run_at": "document_start",
       "world": "ISOLATED"
     }
-  ]
+  ],
+  "permissions": ["storage"],
+  "background": { "service_worker": "background.js" }
 }

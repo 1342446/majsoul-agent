@@ -5,7 +5,7 @@
   const seatHistoryWarning = '自家座位已识别，但识别前的手牌变化未完整追踪；请从下一局开局核对';
   function initial(source = 'live', selfSeat = null) {
     return { source, selfSeat, phase: 'waiting', round: null, honba: 0, sticks: 0, remaining: null,
-      doras: [], turn: null, selfHand: [], drawnTiles: [null, null, null, null], scores: [], complete: false, lastStep: null, seatTrackingIncomplete: false,
+      doras: [], turn: null, selfHand: [], drawnTiles: [null, null, null, null], scores: [], startScores: [], result: null, complete: false, lastStep: null, seatTrackingIncomplete: false,
       players: Array.from({ length: 4 }, () => ({ hand: [], discards: [], melds: [], riichi: false, norths: 0 })), warnings: [] };
   }
   function warn(s, text) { if (!s.warnings.includes(text)) s.warnings.push(text); if (s.warnings.length > 8) s.warnings.shift(); }
@@ -34,11 +34,13 @@
   function apply(state, e) {
     let s = structuredClone(state);
     if (e.source !== s.source) return s;
+    if (e.kind === 'MJStart') return initial(e.source);
     if (e.kind === 'NewRound') {
       s = initial(e.source, s.selfSeat);
       if (e.source === 'live' && e.operation?.types?.length) s.selfSeat = e.operation.seat;
       s.phase = 'playing'; s.round = { wind: e.wind, index: e.round };
       s.honba = e.honba; s.sticks = e.sticks; s.scores = e.scores.slice();
+      s.startScores = e.scores.slice();
       s.remaining = e.remaining; s.doras = e.doras.slice(); s.complete = true;
       s.turn = e.round;
       if (e.hands) e.hands.forEach((h, i) => { s.players[i].hand = h.slice(); });
@@ -103,9 +105,18 @@
     if (e.remaining !== undefined && e.remaining !== null) s.remaining = e.remaining;
     if (e.doras?.length) s.doras = e.doras.slice();
     if (e.scores?.length) s.scores = e.scores.slice();
+    else if (e.oldScores?.length && e.oldScores.length === e.deltas?.length) s.scores = e.oldScores.map((v, i) => v + e.deltas[i]);
     if (e.sticks !== undefined && e.sticks !== null) s.sticks = e.sticks;
     if (e.riichiSuccess && !e.riichiSuccess.failed) {
       const r = e.riichiSuccess; s.scores[r.seat] = r.score; s.sticks = r.sticks; s.players[r.seat].riichi = true;
+    }
+    if (['Hule', 'NoTile', 'LiuJu'].includes(e.kind)) {
+      const scoresKnown = !!e.scores?.length || !!(e.oldScores?.length && e.oldScores.length === e.deltas?.length)
+        || (e.kind === 'LiuJu' && s.complete);
+      s.result = { kind: e.kind, winners: structuredClone(e.winners || []), reason: e.reason ?? null,
+        tenpai: (e.tenpai || []).slice(), nagashi: !!e.nagashi, gameEnded: !!e.gameEnded, scoresKnown,
+        scores: scoresKnown ? s.scores.slice() : [],
+        deltas: scoresKnown && s.startScores.length === s.scores.length ? s.scores.map((v, i) => v - s.startScores[i]) : [] };
     }
     if (e.step !== undefined) s.lastStep = e.step;
     refreshSeatWarning(s);

@@ -125,14 +125,22 @@
     } else if (kind === 'BaBei') {
       Object.assign(e, { seat: num(f, 1), doras: tiles(f, 6), operation: replay ? undefined : operation(f, 4) });
     } else if (kind === 'Hule') {
-      Object.assign(e, { scores: nums(f, 5), deltas: nums(f, 3), doras: tiles(f, 7),
+      Object.assign(e, { scores: nums(f, 5), oldScores: nums(f, 2), deltas: nums(f, 3), doras: tiles(f, 7),
+        gameEnded: !!blob(f, 6)?.length,
         winners: blobs(f, 1).map(b => { const h = wire(b); return { seat: num(h, 4), tile: tile(str(h, 3)),
           tsumo: !!num(h, 5), han: num(h, 11), fu: num(h, 13) }; }) });
     } else if (kind === 'NoTile') {
       const list = blobs(f, 3).map(b => wire(b));
-      const old = list.length ? nums(list[0], 2) : [], delta = list.length ? nums(list[0], 3) : [];
-      if (old.length && old.length === delta.length) e.scores = old.map((v, i) => v + delta[i]);
-    } else if (kind === 'LiuJu') e.reason = num(f, 1);
+      const old = list.length ? nums(list[0], 2) : [];
+      const changes = list.map(o => nums(o, 3));
+      if (old.length && changes.every(ds => ds.length === old.length)) e.scores = old.map((v, i) => v + changes.reduce((sum, ds) => sum + ds[i], 0));
+      e.gameEnded = !!num(f, 4); e.nagashi = !!num(f, 1);
+      e.tenpai = blobs(f, 2).map(b => !!num(wire(b), 3));
+    } else if (kind === 'LiuJu') {
+      e.reason = num(f, 1); e.riichiSuccess = success(f);
+      const end = blob(f, 2); e.gameEnded = !!end?.length;
+      if (end?.length) e.scores = nums(wire(end), 1);
+    }
     else if (kind === 'MJStart') return e;
     else return { kind: 'Unsupported', source, name: String(name).slice(0, 100) };
     if ('seat' in e && (e.seat < 0 || e.seat > 3)) throw new Error('无效座位');
