@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "雀魂牌局观察器 · 核对原型",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "在本地观察雀魂网页版牌局消息，供人工核对与导出。",
   "web_accessible_resources": [
     { "resources": ["tiles/*.svg"], "matches": ["https://game.maj-soul.com/*"] }

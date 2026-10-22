@@ -20,6 +20,9 @@
     return (layout.tiles.length ? layout.tiles.map(tileHtml).join('') : layout.drawn ? '' : handHtml([]))
       + (layout.drawn ? '<span class="drawn-tile" title="刚摸的牌">' + tileHtml(layout.drawn) + '</span>' : '');
   }
+  function riverHtml(player, label) {
+    return `<div class="river tiles" aria-label="${esc(label)}" style="margin-top:5px">${player.discards.length ? player.discards.map(t => `<span class="${t.called ? 'called' : ''} ${t.riichi ? 'riichi' : ''}" title="${t.called ? '已被鸣牌；' : ''}${t.tsumogiri ? '摸切' : '手切'}">${tileHtml(t.tile)}<small>${t.called ? '已鸣' : t.riichi ? '立直' : t.tsumogiri ? '摸切' : '手切'}</small></span>`).join('') : '<span class="muted">牌河：空 / 尚未采集</span>'}</div>`;
+  }
   const roundText = s => s.round ? `${suits[s.round.wind] || '?'}${s.round.index + 1}局` : '等待开局';
   function eventHtml(e) {
     const text = `${e.step !== undefined ? '#' + e.step + ' ' : ''}${e.seat !== undefined ? windName(e.seatWind) + ' ' : ''}${eventNames[e.kind] || e.kind}`;
@@ -64,10 +67,11 @@
     const statusText = mode === 'replay' ? (records.length ? '牌谱已解析 · 游标需手动与画面对齐' : '等待载入牌谱，请重新打开牌谱') :
       (live.complete ? '已接收开局 · 请与画面核对' : live.round ? '已接收开局 · 状态待核对' : connected ? '连接已建立 · 等待完整开局' : '采集器就绪 · 等待新连接');
     const items = mode === 'live' ? log.slice(-12).reverse() : records.slice(Math.max(0, cursor - 8), cursor).reverse();
+    const selfRiver = s.selfSeat === null ? '<p class="muted">自家座位未识别，暂无法确定牌河。</p>' : riverHtml(s.players[s.selfSeat], '自家牌河');
     const playerHtml = s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((p, i) => `<div class="player">
       <div class="player-head"><b>${S.seatWind(s, i)}${s.selfSeat === i ? ' · 自家' : ''}${p.riichi ? ' · 立直' : ''}</b><span>${esc(s.scores[i] ?? '—')} 点${p.norths ? ' · 拔北' + p.norths : ''}</span></div>
       ${mode === 'replay' ? '<div class="tiles">' + playerHandHtml(p.hand, s.drawnTiles[i]) + '</div>' : ''}
-      <div class="river tiles" style="margin-top:5px">${p.discards.length ? p.discards.map(t => `<span class="${t.called ? 'called' : ''} ${t.riichi ? 'riichi' : ''}" title="${t.called ? '已被鸣牌；' : ''}${t.tsumogiri ? '摸切' : '手切'}">${tileHtml(t.tile)}<small>${t.called ? '已鸣' : t.riichi ? '立直' : t.tsumogiri ? '摸切' : '手切'}</small></span>`).join('') : '<span class="muted">牌河：空 / 尚未采集</span>'}</div>
+      ${mode === 'live' && s.selfSeat === i ? '' : riverHtml(p, S.seatWind(s, i) + '家牌河')}
       ${p.melds.length ? '<div class="tiles" style="margin-top:5px">副露 ' + p.melds.map(m => '<span>' + m.tiles.map(tileHtml).join('') + '</span>').join(' ') + '</div>' : ''}</div>`).join('');
     shadow.innerHTML = `<style>${css}</style><section class="shell ${collapsed ? 'pill' : ''} ${connected ? 'connected' : ''}" aria-label="雀魂牌局观察器">
       <header><span class="indicator"></span><strong>牌局观察器</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
@@ -77,8 +81,9 @@
       ${riichiAlert}
       <div class="meta"><b class="round">${esc(roundText(s))}</b><span>${s.honba} 本场</span><span>${s.sticks} 立直棒</span><span>余 ${s.remaining ?? '—'} 张</span></div>
       <p class="muted">${s.phase === 'ended' ? '本局已结束' : s.turn === null ? '当前座风待识别' : '最近动作：' + windName(S.seatWind(s, s.turn))} · ${s.complete ? '事件连续' : '状态待核对'}</p>
-      <h3>宝牌指示牌</h3><div class="tiles">${handHtml(s.doras)}</div>
-      ${mode === 'live' ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div>' + (s.selfSeat === null ? '<p class="warn">自家座位未识别，后续手牌变化可能不完整。</p>' : '') : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${records.length}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${records.length}" value="${cursor}"><div class="controls"><button id="start" ${!records.length ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= records.length ? 'disabled' : ''}>下一事件</button></div></div>`}
+      <h3>宝牌指示牌</h3><div class="tiles" aria-label="宝牌指示牌">${handHtml(s.doras)}</div>
+      <h3>宝牌</h3><div class="tiles" aria-label="宝牌">${handHtml(S.doraTiles(s))}</div>
+      ${mode === 'live' ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver + (s.selfSeat === null ? '<p class="warn">自家座位未识别，后续手牌变化可能不完整。</p>' : '') : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${records.length}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${records.length}" value="${cursor}"><div class="controls"><button id="start" ${!records.length ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= records.length ? 'disabled' : ''}>下一事件</button></div></div>`}
       ${s.warnings.map(w => '<p class="warn">' + esc(w) + '</p>').join('')}${playerHtml}
       <details open><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
       <details><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p><ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>

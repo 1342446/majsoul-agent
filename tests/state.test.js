@@ -173,3 +173,34 @@ test('resolving own seat does not erase a missing-event warning', () => {
   assert.ok(s.warnings.some(w => w.includes('动作序号有缺口')));
   assert.ok(!s.warnings.some(w => w.includes('自家座位尚未识别')));
 });
+
+test('dora follows numbered tiles and wraps nine to one in each suit', () => {
+  for (const suit of ['m', 'p', 's']) {
+    const indicators = ['1','2','3','4','5','6','7','8','9'].map(n => n + suit);
+    assert.deepEqual(indicators.map(t => S.doraTile(t)), ['2','3','4','5','6','7','8','9','1'].map(n => n + suit));
+    assert.equal(S.doraTile('0' + suit), '6' + suit);
+  }
+});
+
+test('winds and dragons use separate dora cycles', () => {
+  assert.deepEqual(['1z','2z','3z','4z','5z','6z','7z'].map(t => S.doraTile(t)),
+    ['2z','3z','4z','1z','6z','7z','5z']);
+});
+
+test('three-player dora skips absent manzu while other suits and honors keep their cycles', () => {
+  assert.equal(S.doraTile('1m', 3), '9m'); assert.equal(S.doraTile('9m', 3), '1m');
+  for (const t of ['2m','5m','0m','8m','?','0z','8z','10m',null,undefined]) assert.equal(S.doraTile(t, 3), '?');
+  assert.equal(S.doraTile('9p', 3), '1p'); assert.equal(S.doraTile('0s', 3), '6s');
+  assert.equal(S.doraTile('4z', 3), '1z'); assert.equal(S.doraTile('7z', 3), '5z');
+});
+
+test('dora display tracks newly revealed indicators, preserves duplicates and resets on a new round', () => {
+  let s = S.apply(S.initial(), round());
+  assert.deepEqual(S.doraTiles(s), ['8p']);
+  s = S.apply(s, evt('DealTile', { seat: 1, tile: '1m', step: 1, doras: ['7p','9m','7p','?'] }));
+  assert.deepEqual(S.doraTiles(s), ['8p','1m','8p','?']);
+  assert.deepEqual(s.doras, ['7p','9m','7p','?']);
+  s = S.apply(s, { ...round(), scores: [35000,35000,35000], doras: ['1m'] });
+  assert.deepEqual(S.doraTiles(s), ['9m']);
+  assert.deepEqual(S.doraTiles(S.initial()), []);
+});

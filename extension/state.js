@@ -117,6 +117,18 @@
     const suit = { m: '万', p: '筒', s: '索' }[tile?.[1]];
     return suit ? (tile[0] === '0' ? '赤5' : tile[0]) + suit : '未知';
   }
+  function doraTile(indicator, playerCount = 4) {
+    if (typeof indicator !== 'string') return '?';
+    const t = canonical(indicator);
+    if (/^[1-9][mps]$/.test(t)) {
+      if (playerCount === 3 && t[1] === 'm') return t === '1m' ? '9m' : t === '9m' ? '1m' : '?';
+      return (Number(t[0]) % 9 + 1) + t[1];
+    }
+    return /^[1-7]z$/.test(t) ? { '1z': '2z', '2z': '3z', '3z': '4z', '4z': '1z', '5z': '6z', '6z': '7z', '7z': '5z' }[t] : '?';
+  }
+  function doraTiles(state) {
+    return state.doras.map(t => doraTile(t, state.scores.length === 3 ? 3 : 4));
+  }
   function seatWind(state, seat) {
     if (!state.round || !Number.isInteger(seat)) return '座风待定';
     const count = state.scores.length === 3 ? 3 : 4;
@@ -146,7 +158,7 @@
       return e.seat === undefined ? { ...e } : { ...e, seatWind: seatWind(context, e.seat) };
     });
   }
-  const api = { initial, apply, label, seatWind, withSeatWinds, handLayout, opponentRiichi, selectSelfSeat };
+  const api = { initial, apply, label, doraTile, doraTiles, seatWind, withSeatWinds, handLayout, opponentRiichi, selectSelfSeat };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else Object.defineProperty(root, '__MJ_OBSERVER_STATE_V1__', { value: api });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
