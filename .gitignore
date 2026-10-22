@@ -1,4 +1,5 @@
 node_modules/
+.playwright-cli/
 .env
 .env.*
 *.log
