@@ -87,3 +87,89 @@ test('event history keeps the wind from its own round when later rounds rotate',
   ]);
   assert.equal(events[1].seatWind, '东'); assert.equal(events[3].seatWind, '北');
 });
+
+test('hand display sorts suits and honors, preserves red fives and keeps the draw apart without changing captured order', () => {
+  const hand = ['7z', '5p', '9m', '0p', '1s', '1z', '2m', '1m'];
+  assert.deepEqual(S.handLayout(hand, '1m'), {
+    tiles: ['2m', '9m', '0p', '5p', '1s', '1z', '7z'], drawn: '1m'
+  });
+  assert.equal(hand.at(-1), '1m'); assert.equal(hand[0], '7z');
+  assert.deepEqual(S.handLayout(['5p', '0p', '5p'], '5p'), { tiles: ['0p', '5p'], drawn: '5p' });
+  assert.deepEqual(S.handLayout(['2m'], '9p'), { tiles: ['2m'], drawn: null });
+});
+
+test('hand display tracks draw then sorts after discarding an older tile or calling', () => {
+  let s = S.apply(S.initial(), round());
+  s = S.apply(s, evt('DealTile', { seat: 1, tile: '1m', step: 1 }));
+  assert.equal(S.handLayout(s.selfHand, s.drawnTiles[1]).drawn, '1m');
+  s = S.apply(s, evt('DiscardTile', { seat: 1, tile: '7m', step: 2 }));
+  assert.equal(s.drawnTiles[1], null);
+  assert.equal(S.handLayout(s.selfHand, s.drawnTiles[1]).tiles[0], '1m');
+  s = S.apply(s, round());
+  assert.deepEqual(s.drawnTiles, [null, null, null, null]);
+});
+
+test('opponent riichi alert excludes self, retains multiple opponents and clears at round end and next round', () => {
+  let s = S.apply(S.initial(), round());
+  s = S.apply(s, evt('DiscardTile', { seat: 1, tile: '3z', riichi: true, step: 1 }));
+  assert.deepEqual(S.opponentRiichi(s), []);
+  s = S.apply(s, evt('DiscardTile', { seat: 2, tile: '1m', riichi: true, step: 2 }));
+  assert.deepEqual(S.opponentRiichi(s), [2]);
+  s = S.apply(s, evt('DealTile', { seat: 3, tile: '?', riichiSuccess: { seat: 0, score: 24000, sticks: 2 }, step: 3 }));
+  assert.deepEqual(S.opponentRiichi(s), [0, 2]);
+  assert.deepEqual(S.opponentRiichi(S.apply(s, evt('Hule', { step: 4 }))), []);
+  assert.deepEqual(S.opponentRiichi(S.apply(s, round())), []);
+});
+
+test('replay riichi alert requires an explicit own seat and follows the replay cursor', () => {
+  const opening = P.decodeEvent('RecordNewRound', F.replayRound(), 'replay');
+  const discard = { kind: 'DiscardTile', source: 'replay', seat: 0, tile: '7m', riichi: true };
+  let s = S.apply(S.apply(S.initial('replay'), opening), discard);
+  assert.deepEqual(S.opponentRiichi(s), []);
+  s.selfSeat = 0; assert.deepEqual(S.opponentRiichi(s), []);
+  s.selfSeat = 1; assert.deepEqual(S.opponentRiichi(s), [0]);
+  assert.deepEqual(S.opponentRiichi(S.apply(S.initial('replay', 1), opening)), []);
+});
+
+test('late automatic seat detection replaces the stale unknown-seat warning but retains incomplete tracking', () => {
+  let s = S.apply(S.initial(), { ...round(), operation: undefined });
+  s = S.apply(s, evt('DealTile', { seat: 2, tile: '?', step: 1 }));
+  assert.ok(s.warnings.some(w => w.includes('自家座位尚未识别')));
+  s = S.apply(s, evt('DealTile', { seat: 1, tile: '1m', step: 2, operation: { seat: 1, types: [1] } }));
+  assert.equal(s.selfSeat, 1);
+  assert.ok(!s.warnings.some(w => w.includes('自家座位尚未识别')));
+  assert.ok(s.warnings.some(w => w.includes('识别前的手牌变化未完整追踪')));
+  assert.ok(!s.warnings.some(w => w.includes('未获得完整开局')));
+  assert.equal(s.complete, false);
+  assert.ok(s.selfHand.includes('1m'));
+  s = S.apply(s, round());
+  assert.equal(s.complete, true); assert.equal(s.seatTrackingIncomplete, false);
+  assert.deepEqual(s.warnings, []);
+});
+
+test('manual seat selection updates the warning immediately without requiring another event', () => {
+  let s = S.apply(S.initial(), { ...round(), operation: undefined });
+  s = S.apply(s, evt('DiscardTile', { seat: 0, tile: '9m', step: 1 }));
+  const selected = S.selectSelfSeat(s, 1);
+  assert.equal(selected.selfSeat, 1); assert.equal(selected.complete, false);
+  assert.ok(selected.warnings.some(w => w.includes('自家座位已识别')));
+  assert.ok(!selected.warnings.some(w => w.includes('自家座位尚未识别')));
+  assert.equal(s.selfSeat, null);
+});
+
+test('selecting own seat before untracked actions preserves a complete opening', () => {
+  const s = S.selectSelfSeat(S.apply(S.initial(), { ...round(), operation: undefined }), 1);
+  assert.equal(s.complete, true); assert.deepEqual(s.warnings, []);
+  const changed = S.selectSelfSeat(s, 2);
+  assert.equal(changed.complete, false);
+  assert.ok(changed.warnings.some(w => w.includes('座位已手动变更')));
+});
+
+test('resolving own seat does not erase a missing-event warning', () => {
+  let s = S.apply(S.initial(), { ...round(), operation: undefined });
+  s = S.apply(s, evt('DealTile', { seat: 2, tile: '?', step: 3 }));
+  s = S.selectSelfSeat(s, 1);
+  assert.equal(s.complete, false);
+  assert.ok(s.warnings.some(w => w.includes('动作序号有缺口')));
+  assert.ok(!s.warnings.some(w => w.includes('自家座位尚未识别')));
+});

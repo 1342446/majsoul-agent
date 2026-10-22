@@ -1,12 +1,29 @@
 (function (root) {
   'use strict';
   const canonical = tile => /^0[mps]$/.test(tile) ? '5' + tile[1] : tile;
+  const seatUnknownWarning = '自家座位尚未识别，手牌变化未完整追踪';
+  const seatHistoryWarning = '自家座位已识别，但识别前的手牌变化未完整追踪；请从下一局开局核对';
   function initial(source = 'live', selfSeat = null) {
     return { source, selfSeat, phase: 'waiting', round: null, honba: 0, sticks: 0, remaining: null,
-      doras: [], turn: null, selfHand: [], scores: [], complete: false, lastStep: null,
+      doras: [], turn: null, selfHand: [], drawnTiles: [null, null, null, null], scores: [], complete: false, lastStep: null, seatTrackingIncomplete: false,
       players: Array.from({ length: 4 }, () => ({ hand: [], discards: [], melds: [], riichi: false, norths: 0 })), warnings: [] };
   }
   function warn(s, text) { if (!s.warnings.includes(text)) s.warnings.push(text); if (s.warnings.length > 8) s.warnings.shift(); }
+  function refreshSeatWarning(s) {
+    s.warnings = s.warnings.filter(w => w !== seatUnknownWarning && w !== seatHistoryWarning);
+    if (s.seatTrackingIncomplete) warn(s, s.selfSeat === null ? seatUnknownWarning : seatHistoryWarning);
+  }
+  function selectSelfSeat(state, seat) {
+    const count = state.scores.length === 3 ? 3 : 4;
+    if (seat !== null && (!Number.isInteger(seat) || seat < 0 || seat >= count)) throw new Error('无效座位');
+    const s = structuredClone(state);
+    if (s.selfSeat !== null && s.selfSeat !== seat) {
+      s.complete = false; warn(s, '座位已手动变更，请重新从开局核对手牌');
+    }
+    s.selfSeat = seat;
+    refreshSeatWarning(s);
+    return s;
+  }
   function remove(s, hand, tile, allowEquivalent = false) {
     let i = hand.indexOf(tile);
     if (i < 0 && allowEquivalent) i = hand.findIndex(t => canonical(t) === canonical(tile));
@@ -31,7 +48,7 @@
       if (e.step !== undefined && s.lastStep !== null && e.step > s.lastStep + 1) {
         s.complete = false; warn(s, '动作序号有缺口，当前局面可能不完整');
       }
-      if (!s.complete && e.kind !== 'MJStart') warn(s, '未获得完整开局，请从开局采集');
+      if (!s.complete && e.kind !== 'MJStart') warn(s, '当前局面可能不完整，请核对采集状态');
       if (e.source === 'live' && e.operation?.types?.length) {
         if (s.selfSeat !== null && s.selfSeat !== e.operation.seat) warn(s, '操作提示座位与所选座位不同');
         else s.selfSeat = e.operation.seat;
@@ -39,10 +56,11 @@
       const p = s.players[e.seat];
       const hand = e.source === 'replay' ? p?.hand : (e.seat === s.selfSeat ? s.selfHand : null);
       if (e.source === 'live' && s.selfSeat === null && ['DealTile', 'DiscardTile', 'ChiPengGang', 'AnGangAddGang', 'BaBei'].includes(e.kind)) {
-        s.complete = false; warn(s, '自家座位尚未识别，手牌变化未完整追踪');
+        s.complete = false; s.seatTrackingIncomplete = true;
       }
       if (e.kind === 'DealTile') {
         s.turn = e.seat; if (hand) hand.push(e.tile);
+        s.drawnTiles[e.seat] = e.tile;
       } else if (e.kind === 'DiscardTile') {
         s.turn = e.seat;
         if (hand) remove(s, hand, e.tile);
@@ -80,6 +98,7 @@
         p.norths++; if (hand) remove(s, hand, '4z');
       } else if (['Hule', 'NoTile', 'LiuJu'].includes(e.kind)) s.phase = 'ended';
       else if (e.kind === 'Unsupported') { s.complete = false; warn(s, '未支持事件：' + e.name); }
+      if (['DiscardTile', 'ChiPengGang', 'AnGangAddGang', 'BaBei'].includes(e.kind)) s.drawnTiles[e.seat] = null;
     }
     if (e.remaining !== undefined && e.remaining !== null) s.remaining = e.remaining;
     if (e.doras?.length) s.doras = e.doras.slice();
@@ -89,6 +108,7 @@
       const r = e.riichiSuccess; s.scores[r.seat] = r.score; s.sticks = r.sticks; s.players[r.seat].riichi = true;
     }
     if (e.step !== undefined) s.lastStep = e.step;
+    refreshSeatWarning(s);
     return s;
   }
   function label(tile) {
@@ -103,6 +123,22 @@
     if (seat < 0 || seat >= count) return '座风待定';
     return ['东', '南', '西', '北'][(seat - state.round.index + count) % count];
   }
+  function handLayout(hand, drawnTile = null) {
+    const tiles = hand.slice();
+    const index = drawnTile === null ? -1 : tiles.lastIndexOf(drawnTile);
+    const drawn = index < 0 ? null : tiles.splice(index, 1)[0];
+    const rank = t => /^[0-9][mps]$/.test(t)
+      ? 'mps'.indexOf(t[1]) * 100 + Number(t[0] === '0' ? 5 : t[0]) * 2 + (t[0] === '0' ? 0 : 1)
+      : /^[1-7]z$/.test(t) ? 300 + Number(t[0]) : 400;
+    tiles.sort((a, b) => rank(a) - rank(b));
+    return { tiles, drawn };
+  }
+  function opponentRiichi(state) {
+    if (state.phase !== 'playing' || !Number.isInteger(state.selfSeat)) return [];
+    const count = state.scores.length === 3 ? 3 : 4;
+    if (state.selfSeat < 0 || state.selfSeat >= count) return [];
+    return state.players.slice(0, count).flatMap((p, seat) => p.riichi && seat !== state.selfSeat ? [seat] : []);
+  }
   function withSeatWinds(events) {
     let context = initial('replay');
     return events.map(e => {
@@ -110,7 +146,7 @@
       return e.seat === undefined ? { ...e } : { ...e, seatWind: seatWind(context, e.seat) };
     });
   }
-  const api = { initial, apply, label, seatWind, withSeatWinds };
+  const api = { initial, apply, label, seatWind, withSeatWinds, handLayout, opponentRiichi, selectSelfSeat };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else Object.defineProperty(root, '__MJ_OBSERVER_STATE_V1__', { value: api });
 })(typeof globalThis !== 'undefined' ? globalThis : this);
