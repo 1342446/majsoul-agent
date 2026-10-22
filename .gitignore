@@ -1,0 +1,8 @@
+node_modules/
+.env
+.env.*
+*.log
+research/sources/
+research/current-web/
+research/current-desktop/
+research/evidence/
