@@ -4,7 +4,7 @@
 <style>body{margin:0;background:#e5edf2;color:#214764;font:16px/1.8 "Microsoft YaHei",sans-serif;padding:40px;max-width:650px}h1{font-size:26px}button{padding:10px 16px;margin:8px;border:1px solid #7b9bad;background:white;color:#214764;cursor:pointer}</style>
 <h1>离线界面演示</h1><p>这里使用人工构造的数据，只验证面板和动态更新，不连接雀魂。右侧面板中的数据不是实采结果。</p>
 <button id="draw">模拟自家摸牌</button><button id="discard">模拟自家弃牌</button><button id="replay">模拟载入四家牌谱</button>
-<script src="../extension/state.js"></script><script src="../extension/history.js"></script><script src="../extension/overlay.js"></script>
+<script src="../extension/state.js"></script><script src="../extension/history.js"></script><script src="../extension/analysis.js"></script><script src="../extension/analysis-panel.js"></script><script src="../extension/overlay.js"></script>
 <script>
 let seq=0,step=0;const hand=['7m','2p','4s','6s','8s','8s','8s','9s','2z','3z','4z','5z','6z'];
 const post=(type,payload)=>window.postMessage({channel:'mj-observer-v1',epoch:'offline-demo',sequence:++seq,type,payload},location.origin);

@@ -174,6 +174,7 @@
       <h3>宝牌</h3><div class="tiles" aria-label="宝牌">${handHtml(S.doraTiles(s))}</div>
       ${displayLive ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver + (s.selfSeat === null ? '<p class="warn">自家座位未识别，后续手牌变化可能不完整。</p>' : '') : historical ? '' : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${records.length}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${records.length}" value="${cursor}"><div class="controls"><button id="start" ${!records.length ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= records.length ? 'disabled' : ''}>下一事件</button></div></div>`}
       ${s.warnings.map(w => '<p class="warn">' + esc(w) + '</p>').join('')}${playerHtml}
+      <div id="model-analysis"></div>
       <details open><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : historical ? '<li class="muted">历史记录保存结算快照，不含逐事件回放。</li>' : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
       <details><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p><ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>
       <p class="foot">东南西北表示本局座风，随庄家轮转，并非固定屏幕方位。数据仅供核对，牌谱四家手牌不代表实战暗牌可见。导出不含账号、令牌或原始消息。</p></div>`}</section>`;
@@ -181,6 +182,7 @@
     if (collapsed) return;
     shadow.querySelector('.body').scrollTop = oldScroll;
     [...shadow.querySelectorAll('details')].forEach((d, i) => { if (oldDetails[i] !== undefined) d.open = oldDetails[i]; });
+    globalThis.MJAnalysisPanel?.mount(shadow.getElementById('model-analysis'), s, { mode: historical ? 'history' : mode, historyView, cursor: !historical && mode === 'replay' ? cursor : null }, render);
     shadow.getElementById('export').onclick = exportData;
     shadow.getElementById('mode').onchange = e => { historyView = null; mode = e.target.value; render(); };
     const historySelect = shadow.getElementById('history-match');
