@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Majsoul Agent",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "雀魂 AI 牌局分析与复盘助手，支持自接模型 API、可选日麻引擎和独立牌局获取器。",
   "web_accessible_resources": [
     {

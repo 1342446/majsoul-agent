@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Majsoul Collector · 雀魂牌局获取器",
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "仅在本地采集、展示和导出雀魂牌局，不包含模型分析。",
   "web_accessible_resources": [
     {

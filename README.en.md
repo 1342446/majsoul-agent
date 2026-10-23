@@ -8,7 +8,7 @@ A browser extension for the Mahjong Soul web client. Inspect the table in an in-
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
-This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+This document describes **0.5.0**. It includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
 
 The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
@@ -29,12 +29,12 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 | Package | Capabilities |
 | --- | --- |
-| `majsoul-ai-analysis-and-review-agent-0.4.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
-| `majsoul-collector-0.4.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
+| `majsoul-ai-analysis-and-review-agent-0.5.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
+| `majsoul-collector-0.5.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
 
 Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
 
-The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-ai-analysis-and-review-agent-0.4.0/` and `dist/majsoul-collector-0.4.0/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
+The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-ai-analysis-and-review-agent-0.5.0/` and `dist/majsoul-collector-0.5.0/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
 
 1. Download and extract the source ZIP, or clone the repository. For a source checkout, use the **`extension/` directory**.
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.

@@ -10,7 +10,7 @@
 
 以上语言切换仅适用于项目介绍，扩展界面目前为简体中文；英文、日文介绍不代表已支持其他地区的游戏域名。
 
-当前为 **0.4.0**。复用0.3.0的分析模块，加入独立Agent执行层、harness与仅获取器分发。两种安装组合已在独立Edge与Chrome环境中通过人工牌局模拟验收。当前Unity客户端的完整实时协议、断线恢复及真实模型建议质量仍待验证；项目不宣称实战识别正确率或牌力水平。
+当前为 **0.5.0**。包含实时／牌谱切换、本地与模型分析、独立全局分析、可配置思考与输出上限、白天／黑夜主题，以及按需打开的获取器窗口。两种安装组合已在独立Edge与Chrome环境中通过人工牌局模拟验收。当前Unity客户端的完整实时协议、断线恢复及真实模型建议质量仍待验证；项目不宣称实战识别正确率或牌力水平。
 
 项目统一维护于[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)，保留经过敏感内容清理的完整原私有开发历史，详见[历史迁移说明](docs/HISTORY.md)。
 
@@ -33,12 +33,12 @@
 
 | 安装包 | 提供的能力 |
 | --- | --- |
-| `majsoul-ai-analysis-and-review-agent-0.4.0.zip` | 获取器、局面面板、结算历史、Agent、模型设置与harness运行记录 |
-| `majsoul-collector-0.4.0.zip` | 仅采集、展示、历史与导出；不含模型代码、设置页或模型主机权限 |
+| `majsoul-ai-analysis-and-review-agent-0.5.0.zip` | 获取器、局面面板、结算历史、Agent、模型设置与harness运行记录 |
+| `majsoul-collector-0.5.0.zip` | 仅采集、展示、历史与导出；不含模型代码、设置页或模型主机权限 |
 
 同一游戏页面只启用其中一个版本。获取器可以独立使用，导出记录再交给离线复盘工具；两种扩展的本地存储独立，不自动迁移。源码中的 `extension/` 为完整版；运行 `npm run build` 会生成两种可加载目录。
 
-两版使用独立的`extension/profiles/agent.json`和`collector.json`，分别加载`apps/agent-app.js`与`apps/collector-app.js`组合入口。构建按依赖闭包生成`dist/majsoul-ai-analysis-and-review-agent-0.4.0/`和`dist/majsoul-collector-0.4.0/`，可直接加载其中一个目录；获取器包仅包含采集、展示、历史与导出所需文件。
+两版使用独立的`extension/profiles/agent.json`和`collector.json`，分别加载`apps/agent-app.js`与`apps/collector-app.js`组合入口。构建按依赖闭包生成`dist/majsoul-ai-analysis-and-review-agent-0.5.0/`和`dist/majsoul-collector-0.5.0/`，可直接加载其中一个目录；获取器包仅包含采集、展示、历史与导出所需文件。
 
 1. 下载源码 ZIP 并解压，或克隆仓库。源码方式选择其中的 **`extension/` 文件夹**。
 2. Edge 打开 `edge://extensions`；Chrome 打开 `chrome://extensions`，开启“开发者模式”。

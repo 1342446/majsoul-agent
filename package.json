@@ -1,7 +1,7 @@
 {
   "name": "majsoul-ai-analysis-and-review-agent",
   "private": true,
-  "version": "0.4.0",
+  "version": "0.5.0",
   "description": "Mahjong Soul game observation, AI analysis and replay review with user-configured model APIs and optional mahjong engines.",
   "license": "MIT",
   "engines": { "node": ">=22" },
