@@ -35,7 +35,6 @@
       <label>发送牌河 <select id="model-rivers"><option value="none">不发送</option><option value="all">所有玩家</option>${state.players.slice(0, state.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}">${escape(__MJ_OBSERVER_STATE_V1__.seatWind(state, i))}家 · 座位 ${i}</option>`).join('')}</select></label>
       <label><input id="model-hand" type="checkbox" ${selection.hand ? 'checked' : ''}> 自家手牌（需先选定自家座位）</label>
       <label>分析内容 <select id="model-task"><option value="both">危险牌 + 出牌建议</option><option value="danger">危险牌</option><option value="discard">建议打的牌</option></select></label>
-      <p class="muted">${state.complete ? '' : '当前采集不完整，分析可能受影响。'}模型建议仅供参考，每次请求可能收费。</p>
       ${error ? `<p class="warn">${escape(error)}</p>` : ''}
       <div class="controls"><button id="model-run" ${!enabled || busy || !!error ? 'disabled' : ''}>${busy ? '正在分析…' : '发送所选数据并分析'}</button><button id="model-preview">${preview ? '收起' : '预览'}发送数据</button>${busy ? '<button id="model-cancel">取消</button>' : ''}</div>
       ${preview ? `<pre>${escape(payload || error)}</pre>` : ''}
