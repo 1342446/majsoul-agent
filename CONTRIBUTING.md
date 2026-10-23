@@ -7,8 +7,8 @@
 使用Node.js 22或更新版本；没有第三方运行依赖，无需安装Python或启动调试端口。
 
 ```sh
-git clone https://github.com/1342446/majsoul-observer-public.git
-cd majsoul-observer-public
+git clone https://github.com/1342446/majsoul-agent.git
+cd majsoul-agent
 npm run check
 npm test
 npm run build

@@ -9,6 +9,6 @@
 | [tzp1021/mj_helper](https://github.com/tzp1021/mj_helper) | CDP、WebSocket、协议解析与状态机分层思路；开源仓库文档组织 | 本项目使用浏览器扩展采集，未捆绑其Python决策代码、训练数据或报告 |
 | [Avenshy/mahjong-helper-majsoul-mitmproxy](https://github.com/Avenshy/mahjong-helper-majsoul-mitmproxy) | Liqi消息封装和字段定义的研究参考 | 本项目实现最小wire reader，未捆绑其代码、proto文件或生成代码；其GPL-3.0代码不纳入本项目MIT授权 |
 | [Avenshy/MajsoulMax](https://github.com/Avenshy/MajsoulMax) | 网页及桌面采集可行性线索 | 未捆绑其客户端修改逻辑 |
-| [matttang27/majsoul-vision](https://github.com/matttang27/majsoul-vision) | 私密早期原型使用过其中的游戏牌面截图 | 授权范围未确认，公开快照中移除全部旧PNG与旧ZIP，替换为本项目原创SVG |
+| [matttang27/majsoul-vision](https://github.com/matttang27/majsoul-vision) | 私密早期原型使用过其中的游戏牌面截图 | 授权范围未确认，公开历史的全部提交已移除旧PNG与旧ZIP，替换为本项目原创SVG |
 
 本文件不是第三方素材的再授权。提交外部代码、图形或字体时，请同时提供原始来源、许可证与必要版权声明；无法确认分发权的内容不得加入。

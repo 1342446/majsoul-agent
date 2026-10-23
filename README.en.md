@@ -6,7 +6,9 @@ A browser extension for the Mahjong Soul web client. Inspect the table in an in-
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
-This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Earlier Edge and offline checks do not validate the new installation profiles; those profiles and other Chromium browsers still need browser testing. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+
+The project is maintained at [1342446/majsoul-agent](https://github.com/1342446/majsoul-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
 ![Offline simulated panel with Chinese UI; not a live capture](docs/images/observer-preview.png)
 
