@@ -3,6 +3,7 @@
   const officialUrl = 'https://naga.dmv.nico/naga_report/order_form/';
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const styleUrl = typeof chrome !== 'undefined' && chrome.runtime?.id ? chrome.runtime.getURL('naga-panel.css') : new URL('naga-panel.css', document.currentScript?.src || location.href).href;
+  const rendered = new WeakMap();
   let enabled = false, open = false, confirmed = false, rules = { roundType: '', redFives: '', kuitan: '' };
   let result = null, selected = new Set(), identity = '', replayIdentity = '', message = '', generation = 0, mountVersion = 0, host = null, context = null, repaint = null;
   function clear() { result = null; selected = new Set(); identity = ''; message = ''; generation++; }
@@ -15,6 +16,12 @@
   function mount(container, options, render) {
     const version = ++mountVersion;
     host = container; context = options; repaint = render || null;
+    let content = container.querySelector('[data-naga-content]');
+    if (!content) {
+      container.innerHTML = `<link rel="stylesheet" href="${escape(styleUrl)}"><div data-naga-content></div>`;
+      content = container.querySelector('[data-naga-content]');
+    }
+    container = content;
     const replay = options.mode === 'replay' && options.recordCount > 0;
     const nextIdentity = replay ? JSON.stringify([options.replayRevision, options.recordCount]) : '';
     if (!replay || nextIdentity !== replayIdentity) { clear(); confirmed = false; }
@@ -22,7 +29,7 @@
     replayIdentity = nextIdentity;
     const ready = replay && confirmed && rules.roundType && rules.redFives !== '' && rules.kuitan === 'true';
     const select = (id, label, value, values) => `<label>${label}<select id="${id}">${[['', '请选择'], ...values].map(([v, name]) => `<option value="${v}"${value === v ? ' selected' : ''}>${name}</option>`).join('')}</select></label>`;
-    container.innerHTML = `<link rel="stylesheet" href="${escape(styleUrl)}"><details class="naga-panel"${open ? ' open' : ''}><summary>牌谱复盘 · NAGA <span>${enabled ? '已启用' : '默认关闭'}</span></summary>
+    const markup = `<details class="naga-panel"${open ? ' open' : ''}><summary>牌谱复盘 · NAGA <span>${enabled ? '已启用' : '默认关闭'}</span></summary>
       <label class="naga-enable"><input id="naga-enabled" type="checkbox"${enabled ? ' checked' : ''}>启用 NAGA 牌谱导出（本页）</label>
       ${!enabled ? '<p class="naga-muted">启用后确认牌谱规则，选择局数并在本地生成文本。</p>' : `
       <p class="naga-muted">全场转换独立于当前游标，包含牌谱四家手牌，默认匿名。仅支持完整四人喰断牌谱。</p>
@@ -37,6 +44,8 @@
       <p class="naga-warn" role="status">${escape(message)}</p>
       <a class="naga-official" href="${officialUrl}" target="_blank" rel="noopener noreferrer">打开 NAGA 官方提交页</a>
       <p class="naga-muted">请在官方站自行登录、粘贴牌谱并选择额度与模型；费用以官方确认为准。本扩展不自动提交或扣费，不读取报告，不读取或保存账号密码。</p>`}</details>`;
+    const renderKey = markup.replace('<details class="naga-panel" open>', '<details class="naga-panel">');
+    if (rendered.get(container) !== renderKey) { container.innerHTML = markup; rendered.set(container, renderKey); }
     const element = id => container.querySelector('#' + id);
     const bind = (id, name, callback) => { const node = element(id); if (node) node[name] = event => { if (version === mountVersion) return callback(event); }; };
     const section = container.querySelector('.naga-panel');

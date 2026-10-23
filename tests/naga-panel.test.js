@@ -7,10 +7,11 @@ function fixture(options = {}) {
   const elements = new Map(); let exports = 0, conversions = 0;
   const observation = { mode: 'replay', replayCursor: 2, replayRecords: [{ kind: 'NewRound', data: 'first' }] };
   const view = { mode: 'replay', recordCount: 1, replayRevision: 1, exportReplay: () => { exports++; return observation; } };
-  const container = { innerHTML: '', querySelector(selector) {
+  const content = { innerHTML: '', querySelector(selector) {
     if (!elements.has(selector)) elements.set(selector, { focus() { this.focused = true; }, select() { this.selected = true; } });
     return elements.get(selector);
   }, querySelectorAll() { return [this.querySelector('.round-0'), this.querySelector('.round-1')]; } };
+  const container = { innerHTML: '', querySelector(selector) { return selector === '[data-naga-content]' ? (this.innerHTML.includes('data-naga-content') ? content : null) : content.querySelector(selector); } };
   const result = { rounds: [{ id: 'a', label: '东1局 <unsafe>', url: 'https://tenhou.net/5/#json=%7Ba%7D' }, { id: 'b', label: '东2局', url: 'https://tenhou.net/5/#json=%7Bb%7D' }], rejected: [{ label: '南1局', reason: '<缺少终局>' }] };
   const context = { URL, setTimeout, document: { currentScript: { src: 'https://fixture/extension/naga-panel.js' } }, location: { href: 'https://fixture/' }, navigator: { clipboard: { writeText: options.copy || (async () => {}) } }, MJNagaReplay: { fromObservation(input, config) { conversions++; assert.equal(config.rules.kuitan, true); assert.equal(input, observation); return result; } } };
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/naga-panel.js'), 'utf8'), context);
@@ -21,7 +22,7 @@ function fixture(options = {}) {
   const configure = () => { enable(); change('naga-round-type', 'hanchan'); change('naga-red', 'true'); change('naga-kuitan', 'true'); change('naga-confirm', true); };
   const generate = () => node('naga-generate').onclick();
   render();
-  return { container, view, observation, context, node, change, enable, configure, generate, render, counts: () => [exports, conversions], html: () => container.innerHTML };
+  return { container, view, observation, context, node, change, enable, configure, generate, render, counts: () => [exports, conversions], html: () => container.innerHTML.replace('<div data-naga-content></div>', '<div data-naga-content>' + content.innerHTML + '</div>') };
 }
 
 test('NAGA is collapsed and disabled by default and requires explicit rule confirmation', () => {

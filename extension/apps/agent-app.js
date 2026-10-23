@@ -13,6 +13,11 @@
     const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: true });
     const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul Agent', positionKey: 'mj-agent-panel-position-v1',
       onRender(container, render) {
+        let analysisSlot = container.querySelector('[data-analysis-slot]');
+        if (!analysisSlot) {
+          analysisSlot = document.createElement('div'); analysisSlot.dataset.analysisSlot = '';
+          container.appendChild(analysisSlot);
+        }
         const view = controller.getView(), state = view.state, S = root.__MJ_OBSERVER_STATE_V1__;
         const selfHand = (state.source === 'replay' ? state.players[state.selfSeat]?.hand : state.selfHand) || [];
         const drawnTile = state.drawnTiles[state.selfSeat] || null;
@@ -35,14 +40,16 @@
           onCollector: () => panel.open(), onHistory: () => panel.open({ history: true }),
           onCalibrateHints: () => { hints.startCalibration(); }
         };
-        root.MJAnalysisPanel.mount(container, analysisView, {
+        root.MJAnalysisPanel.mount(analysisSlot, analysisView, {
           mode: view.historical ? 'history' : view.mode, historyView: view.historyView,
           replayRevision: view.mode === 'replay' ? view.replayRevision : null,
           cursor: !view.historical && view.mode === 'replay' ? view.cursor : null
         }, render, hintHooks);
-        const replaySlot = document.createElement('div');
-        replaySlot.dataset.nagaSlot = '';
-        container.appendChild(replaySlot);
+        let replaySlot = container.querySelector('[data-naga-slot]');
+        if (!replaySlot) {
+          replaySlot = document.createElement('div'); replaySlot.dataset.nagaSlot = '';
+          container.appendChild(replaySlot);
+        }
         root.MJNagaPanel.mount(replaySlot, {
           mode: view.historical ? 'history' : view.mode,
           recordCount: view.recordCount, replayRevision: view.replayRevision,

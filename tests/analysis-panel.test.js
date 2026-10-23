@@ -10,7 +10,8 @@ const flush = () => new Promise(resolve => setImmediate(resolve));
 function panel(options = {}) {
   let mount, configChanged, resolveAnalysis; const messages = [], elements = new Map(), hints = [], details = [{ dataset: { section: 'controls' }, open: false }], section = { scrollTop: 0 };
   const position = { mode: 'live' }; let collectorCalls = 0, historyCalls = 0, calibrateCalls = 0, roundStartCalls = 0;
-  const container = { innerHTML: '', querySelectorAll() { return details; }, querySelector(id) { if (id === '.analysis') return section; if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
+  const content = { innerHTML: '', querySelectorAll() { return details; }, querySelector(id) { if (id === '.analysis') return section; if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
+  const container = { innerHTML: '', querySelector(id) { return id === '[data-analysis-content]' ? (this.innerHTML.includes('data-analysis-content') ? content : null) : content.querySelector(id); } };
   const state = S.initial('live', 1); Object.assign(state, { round: { wind: 0, index: 0 }, scores: [25000,25000,25000,25000], phase: 'playing', selfHand: ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z','4z'] });
   const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout,
     document: { currentScript: { src: 'https://fixture/extension/analysis-panel.js' } }, location: { href: 'https://fixture/tests/preview.html' }, window: { addEventListener() {}, removeEventListener() {} },
@@ -26,7 +27,7 @@ function panel(options = {}) {
     onCursor: cursor => { position.cursor = cursor; render(); }, onSelfSeat: seat => { state.selfSeat = seat; render(); }, onRoundStart: () => roundStartCalls++,
     onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
   render();
-  return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML, configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
+  return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
 }
 test('panel previews task-specific data and escapes model text while rendering tile cards and local table', async () => {
   const p = panel(); await flush(); p.element('model-hand').onchange({ target: { checked: true } });
@@ -143,9 +144,10 @@ test('scope and task changes retain clearly stale output while clearing hints', 
 test('disclosures and scroll persist and utility entry points call supplied callbacks', async () => {
   const p = panel({ riichiLabels: ['南家', '<西家>'] }); await flush();
   p.details[0].open = true; p.details[0].ontoggle(); p.section.scrollTop = 128;
+  const previousHtml = p.html();
   p.state.lastStep++; p.render();
   assert.equal(p.details[0].open, true); assert.equal(p.section.scrollTop, 128);
-  assert.match(p.html(), /data-section="controls" open/);
+  assert.equal(p.html(), previousHtml);
   assert.match(p.html(), /立直警戒 · 南家 · &lt;西家&gt;/);
   for (const id of ['analysis-collector', 'analysis-history', 'analysis-calibrate']) p.element(id).onclick();
   assert.deepEqual(p.calls(), [1, 1, 1]);

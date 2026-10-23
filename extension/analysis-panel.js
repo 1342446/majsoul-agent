@@ -8,6 +8,7 @@
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tileBase = available ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
   const styleUrl = available ? chrome.runtime.getURL('analysis-panel.css') : new URL('analysis-panel.css', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
+  const rendered = new WeakMap();
   const face = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t) ? `<img class="analysis-tile" src="${escape(tileBase + t + '.svg')}" alt="${escape(MJSnapshotContract.label(t))}" title="${escape(MJSnapshotContract.label(t))}">` : escape(t);
   const reasons = values => (values || []).map(escape).join('；');
   const actionNames = { attack: '进攻', defend: '回避', fold: '弃和', unknown: '暂无法判断' };
@@ -87,6 +88,12 @@
     selection.game = true; selection.rivers = 'all'; selection.hand = false; task = 'combined';
   }
   function mount(container, analysisView, position, render, nextHooks = {}) {
+    let content = container.querySelector('[data-analysis-content]');
+    if (!content) {
+      container.innerHTML = `<link rel="stylesheet" href="${escape(styleUrl)}"><div data-analysis-content></div>`;
+      content = container.querySelector('[data-analysis-content]');
+    }
+    container = content;
     const oldScroll = container.querySelector?.('.analysis')?.scrollTop || 0;
     for (const detail of container.querySelectorAll?.('details[data-section]') || []) detailsState[detail.dataset.section] = detail.open;
     if (hooks.onHints && hooks.onHints !== nextHooks.onHints) hooks.onHints(null);
@@ -153,7 +160,7 @@
       <label>分析内容 <select id="model-task"><option value="combined">综合攻守</option><option value="danger">危险牌</option><option value="efficiency">牌效率</option></select></label>
       <p class="muted">${selection.hand ? '点击分析时发送已授权的数据。' : '未发送自家手牌：不能建议具体弃牌。'}</p>
       <div class="analysis-calibration"><button id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button><p class="muted">${current.hintsReady ? '首次使用需校准手牌位置；可随时重新校准。' : '进入游戏牌桌后可校准手牌提示。'}</p></div><button id="model-preview">${preview ? '收起' : '预览'}发送数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
-    container.innerHTML = `<link rel="stylesheet" href="${escape(styleUrl)}"><section class="analysis" aria-label="模型分析">
+    const markup = `<section class="analysis" aria-label="模型分析">
       ${modeControls}${replayControls}
       <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${replay ? '视角' : '自家'}${escape(selfLabel)}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : enabled ? '手动分析' : '模型未开启'}</span></header>
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
@@ -168,6 +175,9 @@
       ${disclosure('controls', '分析设置 · 发送范围', settings)}
       <footer class="analysis-footer"><button id="analysis-collector">牌局获取器</button><button id="analysis-history">整场记录</button></footer>
       </section>`;
+    // Native disclosure changes should not replace focused controls on a status refresh.
+    const renderKey = markup.replace(/(<details data-section="[^"]+")\s*(?:open)?\s*>/g, '$1>');
+    if (rendered.get(container) !== renderKey) { container.innerHTML = markup; rendered.set(container, renderKey); }
     const $ = id => container.querySelector('#' + id);
     if (modeControls) {
       $('analysis-mode-live').onclick = () => current.onMode('live');

@@ -40,7 +40,8 @@ test('collector composition mounts without loading any model capability', () => 
 test('agent composition keeps collection, floating analysis and hand hints on independent surfaces', () => {
   const { window } = surface(); let configured, floating, mounted, opens = [], hints = [], renders = 0;
   let naga;
-  const draw = () => { renders++; floating.onRender({ appendChild() {} }, draw); };
+  const body = { children: [], appendChild(node) { this.children.push(node); }, querySelector(selector) { return this.children.find(node => selector === '[data-analysis-slot]' ? 'analysisSlot' in node.dataset : 'nagaSlot' in node.dataset); } };
+  const draw = () => { renders++; floating.onRender(body, draw); };
   const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
     MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null, createElement: () => ({ dataset: {} }) },
     MJCollectorPanel: { create(options) { configured = options; return { mount() {}, open(value) { opens.push(value); }, destroy() {} }; } },
@@ -62,6 +63,7 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   mounted[4].onHints({ hand: ['1m'] }); assert.equal(hints[0].hand[0], '1m');
   const before = renders; configured.controller.receive({ type: 'status', payload: { gameEvents: 1 } });
   assert.equal(renders, before + 1);
+  assert.equal(body.children.length, 2); assert.equal(mounted[0], body.children[0]);
   assert.equal(naga.mode, 'live'); assert.equal(naga.recordCount, 0); assert.equal(naga.replayRevision, 0);
   // Full replay data is only pulled by an explicit export command, never by rendering.
   assert.equal(typeof naga.exportReplay, 'function');

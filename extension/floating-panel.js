@@ -2,13 +2,13 @@
 (function (root) {
   'use strict';
   function create(options) {
-    let host, shadow, body, position = null, drag = null, collapsed = false;
+    let host, shadow, body, position = null, drag = null, collapsed = false, ready = false;
     const cleanup = [];
     function save() {
       try { localStorage.setItem(options.positionKey, JSON.stringify(position)); } catch (_) {}
     }
     function place(value = position) {
-      if (!host) return;
+      if (!host || !ready) return;
       const rect = host.getBoundingClientRect();
       value ||= { left: innerWidth - rect.width - 18, top: 18 };
       position = {
@@ -33,7 +33,7 @@
     function mount(container = document.documentElement) {
       if (host || document.getElementById(options.id)) return;
       host = document.createElement('div'); host.id = options.id;
-      Object.assign(host.style, { position: 'fixed', inset: 'auto', right: '18px', top: '18px', width: 'min(352px, calc(100vw - 16px))', zIndex: '2147483646', margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible' });
+      Object.assign(host.style, { position: 'fixed', inset: 'auto', right: '18px', top: '18px', width: 'min(352px, calc(100vw - 16px))', zIndex: '2147483646', margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible', visibility: 'hidden' });
       shadow = host.attachShadow({ mode: 'open' });
       shadow.innerHTML = `<style>
         :host{all:initial;font:13px/1.6 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:#f0f2f1}:host::backdrop{background:transparent;pointer-events:none}
@@ -86,9 +86,24 @@
       cleanup.push(() => window.removeEventListener('resize', resize), () => window.removeEventListener('blur', blur), () => document.removeEventListener('fullscreenchange', fullscreen));
       const observer = new ResizeObserver(() => { if (!drag) place(); });
       observer.observe(host); cleanup.push(() => observer.disconnect());
-      render(); fullscreen(); return host;
+      render(); fullscreen();
+      // Styles stay mounted across renders. Do not measure or reveal the initial
+      // unstyled content: its temporary height can also corrupt the saved position.
+      const mountedHost = host;
+      const pendingStyles = new Set([...shadow.querySelectorAll('link[rel="stylesheet"]')].filter(link => !link.sheet));
+      const reveal = () => {
+        if (host !== mountedHost || pendingStyles.size) return;
+        ready = true; place(); host.style.visibility = 'visible';
+      };
+      for (const link of pendingStyles) {
+        const settled = () => { pendingStyles.delete(link); reveal(); };
+        link.addEventListener('load', settled, { once: true });
+        link.addEventListener('error', settled, { once: true });
+        cleanup.push(() => { link.removeEventListener('load', settled); link.removeEventListener('error', settled); });
+      }
+      reveal(); return host;
     }
-    return { mount, render, destroy() { cleanup.splice(0).forEach(fn => fn()); host?.remove(); host = null; shadow = null; body = null; } };
+    return { mount, render, destroy() { cleanup.splice(0).forEach(fn => fn()); host?.remove(); host = null; shadow = null; body = null; ready = false; } };
   }
   root.MJFloatingPanel = { create };
 })(typeof globalThis !== 'undefined' ? globalThis : this);
