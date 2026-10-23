@@ -11,6 +11,8 @@
     "tiles": "node scripts/generate-tiles.mjs",
     "build": "node scripts/build-extensions.mjs",
     "review": "node agent/review.cjs",
-    "eval": "node agent/eval.cjs"
+    "eval": "node agent/eval.cjs",
+    "engine:serve": "node agent/engine-server.cjs",
+    "engine:review": "node agent/engine-review.cjs"
   }
 }

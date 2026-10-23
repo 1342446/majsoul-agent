@@ -20,6 +20,10 @@
         const calibration = hints.getCalibrationState();
         const analysisView = {
           snapshot: selection => root.MJCollectorSnapshot.snapshot(state, selection),
+          engineRequest: selection => {
+            if (!selection.game || selection.rivers !== 'all' || !selection.hand) throw new Error('专业引擎需要授权对局信息、全部牌河和自家手牌。');
+            return root.MJMjaiAdapter.fromObservation(controller.exportData(), { seat: state.selfSeat, hand: true });
+          },
           seatLabels: state.players.slice(0, state.scores.length === 3 ? 3 : 4).map((_, i) => S.seatWind(state, i) + '家'),
           phase: state.phase, round: state.round, selfSeat: state.selfSeat,
           selfHand: hand.tiles.concat(hand.drawn ? [hand.drawn] : []), drawnTile: hand.drawn,

@@ -63,7 +63,7 @@ npm run eval
 
 ## LLM setup
 
-The full edition accepts your own model API; no project-specific service or account is required. It saves one configuration at a time. Edit it to switch models or providers.
+The full edition accepts your own model API; no project-specific service or account is required. LLM analysis and explanation remain the main use. The default provider is `chat`, with analysis disabled. One `chat` and one optional `mjai` configuration are retained separately; only the selected provider runs per request.
 
 | Service type | How to connect |
 | --- | --- |
@@ -89,6 +89,17 @@ Model output must follow a JSON Schema; JSON code fences are accepted. The exten
 The endpoint must support non-streaming `POST /chat/completions` with string content in `choices[0].message.content`; provider-side `response_format` support is not required. Native Anthropic, Gemini, and Responses API formats require a compatible gateway. Both request and response formats must be compatible, and the model must follow the JSON Schema described above. Requests time out after 25 seconds, with one concurrent request per tab.
 
 Advice may be wrong or late, calls may incur charges, and the configured provider processes the input. Real provider compatibility and advice quality still need validation. The API key stays in extension-local storage, is read only by the background component, and is excluded from game exports and the page bridge. See [SECURITY.md](SECURITY.md) for details.
+
+## Optional local mjai engine
+
+Mortal/mjai is an optional adapter, disabled by default. Bring your own model, weights, and inference dependencies. It does not replace the main LLM analysis workflow. The full edition can connect to a manually started local bridge; the independent collector retains no third-party runtime dependencies, engine modules, or engine permissions.
+
+```sh
+npm run engine:serve -- --config runtime.json --port 17341
+npm run engine:review -- observation.json --config runtime.json --seat 0 --hand --cursor 12
+```
+
+`runtime.json` names a trusted local program. Its JSONL protocol receives one complete event array and returns one action line. A Python `Bot.react` wrapper is provided, but your module must initialize the bot and load your weights; an arbitrary upstream `bot.py` is not automatically compatible. Configured commands are not sandboxed, and upstream licenses apply separately. Select `mjai` in settings and enter the local `/analyze` URL and Bearer token. The browser Agent currently accepts only complete four-player rounds without melds, with validated discards, riichi intent, or pass actions; an own-hand 14-tile opening record is rejected. Q values are not deal-in probabilities. There is no automatic play or validation with real model weights. See the [setup, configuration, and limits](docs/MJAI.md) (Chinese).
 
 ## History and replays
 

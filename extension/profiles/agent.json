@@ -37,6 +37,7 @@
         "collector/browser-adapter.js",
         "contracts/snapshot.js",
         "collector/snapshot-adapter.js",
+        "adapters/mjai.js",
         "mahjong-analysis.js",
         "analysis.js",
         "analysis-panel.js",

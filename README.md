@@ -65,7 +65,7 @@ npm run eval
 
 ## 接入大模型
 
-完整版支持自带模型 API，无需使用项目指定的服务或账号。当前一次保存一组配置，可修改配置更换模型或服务。
+完整版支持自带模型 API，无需使用项目指定的服务或账号。LLM 分析与解释仍是主要用途；默认选择 `chat` 且分析关闭。`chat` 与可选 `mjai` 各保留一份配置，保存后一次仅使用选中的一种，不同时调用两者。
 
 | 服务类型 | 接入方式 |
 | --- | --- |
@@ -91,6 +91,17 @@ npm run eval
 支持非流式 `POST /chat/completions` 与字符串 `choices[0].message.content`，无需服务商支持 `response_format`；不直接支持原生 Anthropic、Gemini 或 Responses API，可经兼容网关接入。接口须兼容请求与响应格式，模型仍须按上述 JSON Schema 输出。请求25秒超时，单标签页同时一个请求。
 
 模型可能判断错误或回复不及时，调用可能收费，输入由所配置服务处理；真实服务商兼容性和建议质量尚待验证。API Key 保存在扩展本地存储，仅由后台读取，不进入牌局导出或游戏页面桥接。详情见 [SECURITY.md](SECURITY.md)。
+
+## 可选 mjai 本地引擎
+
+Mortal/mjai 仅是默认不启用的可选适配，需要自备模型、权重及推理依赖，不替代主要的 LLM 分析功能。完整版可连接手动启动的本机桥接服务；获取器保持独立且无第三方运行依赖，不包含引擎模块或权限。
+
+```sh
+npm run engine:serve -- --config runtime.json --port 17341
+npm run engine:review -- observation.json --config runtime.json --seat 0 --hand --cursor 12
+```
+
+`runtime.json` 指定可信本机程序；程序以 JSONL 接收一行完整事件数组，返回一行动作。提供 Python `Bot.react` 包装器，但上游模块必须自行初始化并加载用户权重，不能假设任意 `bot.py` 可直接使用。运行命令不是沙箱，上游许可另行适用。设置页选择 `mjai`，填写本地 `/analyze` 地址及 Bearer Token；页面仅支持完整无副露四麻的合法弃牌、立直意向和跳过，自家14张开局记录明确拒绝。Q 值不作为放铳概率，不自动打牌，尚无真实权重验证。[接入步骤、配置与限制](docs/MJAI.md)
 
 ## 记录与复盘
 

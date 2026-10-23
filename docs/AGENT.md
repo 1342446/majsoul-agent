@@ -52,7 +52,15 @@ python scripts/package-public.py
 
 视图仅暴露回放记录数量与有限的最近事件，完整记录通过导出获取；UI每次渲染只读取一次复制视图。具体依赖规则和静态检查局限见[可执行的模块边界](DECOUPLING.md)。
 
-同一页面只启用一个版本，避免重复观察连接。两种扩展存储独立。当前的独立集成方式是JSON导出与离线复盘，尚未提供外部HTTP服务、MCP服务器或跨扩展实时RPC。
+同一页面只启用一个版本，避免重复观察连接。两种扩展存储独立。独立集成可使用JSON导出与离线复盘；可选 mjai 后端提供仅监听本机的 HTTP 桥接服务，不提供 MCP 服务器或跨扩展实时 RPC。
+
+## 可选 mjai 工作流
+
+LLM 分析和解释仍是主要用途，默认 `chat` 且分析关闭。设置分别保存一份 `chat` 和 `mjai` 配置，一次只运行选中后端。Mortal 是可能的上游之一，需要用户自行准备模型、权重、许可和依赖；没有内置模型或真实权重验收。
+
+`adapters/mjai.js` 从用户授权的 `mj-observer-v1` 本局连续事件生成 `majsoul-mjai-v1`，匿名化玩家名并遮蔽对手暗牌和摸牌。`engine-agent.js` 只消费净化快照和请求，执行 `request.validate → engine.infer → engine.validate`，独立重放自家手牌并核对公开局面。只支持完整无副露四麻，拒绝自家14张开局、轮转缺口、错配局面和不受支持动作。合法 `dahai` 由手牌与本地候选双重约束；`reach` 不确定具体弃牌时保留 `tile:null`；`none` 仅允许在适当响应时机出现。Q 值无可靠映射时不展示候选，不当作放铳概率或危险证据。
+
+`agent/mjai-process.cjs` 启动可信用户命令，以一行完整事件数组输入、单行动作输出的 JSONL 协议完成一次推理，再清理进程。`agent/mjai-python-wrapper.py` 仅包装用户零参数 Bot 类及 `react(events_json)` 接口，用户模块负责加载权重。进程不是沙箱；获取器不包含这些能力或依赖。`engine-server.cjs` 提供带 Bearer Token 的本机 `/analyze`，全局单次推理，忙时429且不排队；`engine-review.cjs` 从导出事件前缀重建快照，调用相同的引擎 Agent 和完整快照/动作校验，输出结构化结果与脱敏轨迹。配置、命令及限制见 [MJAI.md](MJAI.md)。
 
 ## 复盘与评测
 

@@ -2,7 +2,7 @@
   'use strict';
   const available = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
   const selection = { game: true, rivers: 'all', hand: false };
-  let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false;
+  let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
   let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, connected = false;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -12,12 +12,13 @@
   const reasons = values => (values || []).map(escape).join('；');
   const actionNames = { attack: '进攻', defend: '回避', fold: '弃和', unknown: '暂无法判断' };
   const riskNames = { safe: '现物', low: '较低', medium: '中等', high: '较高', unknown: '未知' };
+  const decisionLabel = response => ({ reach: '立直意向', none: '跳过响应' })[response?.engine?.action?.type] || actionNames[response?.result?.decision?.action] || '暂无法判断';
   function resultHtml(response) {
     const r = response.result;
     if (!r) return '';
     return `${r.danger.length ? '<h4>逐对手危险牌</h4>' + r.danger.map(d => `<div class="analysis-card">${face(d.tile)}${d.opponents.map(o => `<p>${escape(response.seatLabels?.[o.seat] || ('座位 ' + o.seat))} · ${escape(riskNames[o.level])}：${reasons(o.reasons)}</p>`).join('')}</div>`).join('') : ''}
       ${r.efficiency.length ? '<h4>牌效率解释</h4>' + r.efficiency.map(e => `<div class="analysis-card">${face(e.tile)} ${reasons(e.reasons)}</div>`).join('') : ''}
-      <h4>建议</h4><p>${escape(actionNames[r.decision.action])} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
+      <h4>建议</h4><p>${escape(decisionLabel(response))} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
       ${r.limitations.length ? `<p class="warn">${reasons(r.limitations)}</p>` : ''}
       ${response.trace ? `<details data-section="trace"><summary>Agent 运行记录</summary><ol>${response.trace.events.map(event => `<li>${escape(event.tool)} · ${escape(event.status)} · ${escape(event.elapsedMs)} ms</li>`).join('')}</ol></details>` : ''}`;
   }
@@ -31,25 +32,33 @@
       <table><thead><tr><th>弃牌</th><th>向听</th><th>有效牌 / 未见上界</th><th>合计上界</th></tr></thead><tbody>${e.candidates.map(entry).join('')}${e.current ? entry(e.current) : ''}</tbody></table><p class="muted">未见枚数为上界，不代表牌山剩余枚数。${e.visibleTiles.partial ? '已见牌范围不完整。' : ''}</p>`;
   }
   function snapshot() { return current.snapshot(selection); }
+  function engineRequest() {
+    if (!selection.game || selection.rivers !== 'all' || !selection.hand) throw new Error('专业引擎需要授权对局信息、全部公开牌河及自家手牌。');
+    if (typeof current.engineRequest !== 'function') throw new Error('当前输入不支持专业引擎事件，请重新加载扩展。');
+    if (task !== 'combined') throw new Error('专业引擎仅支持综合决策，请选择综合攻守。');
+    return current.engineRequest(selection);
+  }
   let preparationKey = '', preparation = null, preparationError = '', preparationBusy = false;
   function requestPreparation(data) {
-    const generation = lifecycle, taskAtRequest = task, key = JSON.stringify([taskAtRequest, data]);
+    const generation = lifecycle, taskAtRequest = task, extra = { provider, ...(provider === 'mjai' ? { engineRequest: engineRequest() } : {}) }, key = JSON.stringify([taskAtRequest, data, extra]);
     if (key === preparationKey) return;
     preparationKey = key; preparation = null; preparationError = ''; preparationBusy = true;
-    const pending = available ? send({ type: 'model:prepare', task: taskAtRequest, snapshot: data }) : new Promise(resolve => setTimeout(() => {
+    const pending = available ? send({ type: 'model:prepare', task: taskAtRequest, snapshot: data, ...extra }) : new Promise(resolve => setTimeout(() => {
       try { resolve({ ok: true, data: MJAnalysis.prepare(data, taskAtRequest).data }); } catch (e) { resolve({ ok: false, error: e.message }); }
     }, 0));
     pending.then(response => { if (key !== preparationKey || generation !== lifecycle) return;
       if (!response?.ok) preparationError = response?.error || '无法整理局面数据。'; else preparation = response.data;
     }).catch(e => { if (key === preparationKey && generation === lifecycle) preparationError = e.message; }).finally(() => { if (key === preparationKey && generation === lifecycle) { preparationBusy = false; repaint?.(); } });
   }
-  function fingerprint() { try { return JSON.stringify({ task, context, round: current.round, phase: current.phase, hand: current.selfHand, drawnTile: current.drawnTile, snapshot: snapshot() }); } catch (_) { return ''; } }
+  function fingerprint() { try { return JSON.stringify({ provider, task, context, round: current.round, phase: current.phase, hand: current.selfHand, drawnTile: current.drawnTile, snapshot: snapshot() }); } catch (_) { return ''; } }
   async function refresh() {
     if (!available) return;
     const generation = lifecycle;
     try { const status = await send({ type: 'model:status' });
       if (generation !== lifecycle) return;
-      if (enabled !== !!status?.enabled) result = null;
+      const nextProvider = status?.provider === 'mjai' ? 'mjai' : 'chat';
+      if (enabled !== !!status?.enabled || provider !== nextProvider) { result = null; preparationKey = ''; preparation = null; }
+      provider = nextProvider;
       enabled = !!status?.enabled; }
     catch (_) { if (generation !== lifecycle) return; enabled = false; }
     repaint?.();
@@ -72,7 +81,7 @@
       window.removeEventListener('focus', refresh);
       if (busy) send({ type: 'model:cancel' }).catch(() => {});
     }
-    connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false;
+    connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false; provider = 'chat';
     current = null; context = null; repaint = null;
     preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
     selection.game = true; selection.rivers = 'all'; selection.hand = false; task = 'combined';
@@ -121,6 +130,7 @@
     const selfLabel = Number.isInteger(current.selfSeat) ? current.seatLabels[current.selfSeat] : '';
 
     const settings = `<div class="controls"><button id="model-settings" ${!available ? 'disabled' : ''}>模型设置</button><button id="model-refresh" ${!available ? 'disabled' : ''}>刷新设置状态</button></div>
+      ${provider === 'mjai' ? '<p class="muted">当前来源：自选本地 mjai 引擎。需授权对局、全部公开牌河、自家手牌及本局动作顺序；仅支持无副露四麻决策。</p>' : ''}
       <label><input id="model-game" type="checkbox" ${selection.game ? 'checked' : ''}> 对局信息（点数、宝牌、副露、立直等）</label>
       <label>发送牌河 <select id="model-rivers"><option value="none">不发送</option><option value="all">所有玩家</option>${current.seatLabels.map((label, i) => `<option value="${i}">${escape(label)}</option>`).join('')}</select></label>
       <label><input id="model-hand" type="checkbox" ${selection.hand ? 'checked' : ''}> 授权发送自家手牌（需选定自家座位）</label>
@@ -132,7 +142,7 @@
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">立直警戒 · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
       <div class="analysis-main" role="status" aria-live="polite">
       ${stale ? '<p class="warn analysis-stale">局面或发送范围已变化，以下为旧结果，请重新分析。</p>' : ''}
-      ${r ? `<div class="analysis-decision"><span>${escape(actionNames[r.decision.action] || '暂无法判断')}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : '查看局面，再决定是否分析'}</strong><p class="muted">${!available ? '离线演示不发送模型请求。' : enabled ? '仅在你点击分析时发送所选数据。' : '在分析设置中接入自己的模型。'}</p></div>`}
+      ${r ? `<div class="analysis-decision"><span>${escape(decisionLabel(result))}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : '查看局面，再决定是否分析'}</strong><p class="muted">${!available ? '离线演示不发送模型请求。' : enabled ? '仅在你点击分析时发送所选数据。' : '在分析设置中接入自己的模型。'}</p></div>`}
       ${current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
       ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
       </div>
@@ -163,8 +173,8 @@
       if (!event.isTrusted || !enabled || busy || !available) return;
       const id = ++requestId;
       try {
-        const data = snapshot(), captured = fingerprint(), seatLabels = current.seatLabels.slice(); busy = true; failure = ''; render();
-        const response = await send({ type: 'model:analyze', task, snapshot: data });
+        const data = snapshot(), extra = provider === 'mjai' ? { engineRequest: engineRequest() } : {}, captured = fingerprint(), seatLabels = current.seatLabels.slice(); busy = true; failure = ''; render();
+        const response = await send({ type: 'model:analyze', provider, task, snapshot: data, ...extra });
         if (id !== requestId) return;
         if (!response?.ok) throw new Error(response?.error || '模型请求失败，请刷新设置状态后重试。');
         focusTile = null;

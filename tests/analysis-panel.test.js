@@ -15,13 +15,13 @@ function panel(options = {}) {
   const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout,
     document: { currentScript: { src: 'https://fixture/extension/analysis-panel.js' } }, location: { href: 'https://fixture/tests/preview.html' }, window: { addEventListener() {}, removeEventListener() {} },
     chrome: { runtime: { id: 'fixture', getURL: p => 'chrome-extension://fixture/' + p, sendMessage: async m => {
-      messages.push(m); if (m.type === 'model:status') return { enabled: true };
-      if (m.type === 'model:prepare') return { ok: true, data: A.prepare(m.snapshot, m.task).data };
+      messages.push(m); if (m.type === 'model:status') return { enabled: true, provider: options.provider || 'chat' };
+      if (m.type === 'model:prepare') return { ok: true, data: m.provider === 'mjai' ? m.engineRequest : A.prepare(m.snapshot, m.task).data };
       if (m.type === 'model:analyze') return new Promise(resolve => { resolveAnalysis = resolve; }); return { ok: true };
     } }, storage: { onChanged: { addListener: fn => { configChanged = fn; }, removeListener() {} } } } };
   if (options.offline) delete context.chrome;
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/analysis-panel.js'), 'utf8'), context);
-  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
+  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
   render();
   return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML, configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
 }
@@ -31,6 +31,7 @@ test('panel previews task-specific data and escapes model text while rendering t
   assert.match(p.html(), /mj-analysis-v2/); assert.doesNotMatch(p.html(), /tsumogiri/);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   const req = p.messages.find(m => m.type === 'model:analyze'), prep = A.prepare(req.snapshot, req.task);
+  assert.equal(req.provider, 'chat'); assert.equal('engineRequest' in req, false);
   p.resolve({ ok: true, model: '<mock>', localAnalysis: prep.data.localAnalysis, result: { task: 'efficiency', danger: [], efficiency: [{ tile: '1m', reasons: ['<img onerror=bad>'] }], decision: { action: 'attack', tile: '1m', reasons: ['测试'] }, limitations: [] } });
   await pending; assert.match(p.html(), /<table>/); assert.match(p.html(), /1m\.svg/); assert.match(p.html(), /&lt;img onerror=bad&gt;/); assert.doesNotMatch(p.html(), /<img onerror/);
   p.state.lastStep++; p.render(); assert.match(p.html(), /旧结果/);
@@ -185,4 +186,52 @@ test('compact summary keeps hand and metadata folded while candidates switch exp
   assert.equal(p.hints.at(-1).decision, originalDecision);
   assert.equal(p.hints.at(-1).decision.tile, '1m');
   assert.match(main(), /analysis-decision[^]*1m\.svg/);
+});
+
+test('optional engine requires complete scope before exporting events or sending a request', async () => {
+  let calls = 0;
+  const p = panel({ provider: 'mjai', engineRequest: () => { calls++; return { format: 'majsoul-mjai-v1', events: [] }; } });
+  await flush();
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.equal(calls, 0);
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  assert.match(p.html(), /需要授权/);
+  p.element('model-hand').onchange({ target: { checked: true } });
+  p.element('model-rivers').onchange({ target: { value: 'none' } });
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.equal(calls, 0);
+  p.element('model-rivers').onchange({ target: { value: 'all' } });
+  p.element('model-game').onchange({ target: { checked: false } });
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.equal(calls, 0);
+});
+
+test('engine preview matches its event input and provider switching clears results and hints', async () => {
+  const options = { provider: 'mjai', engineRequest: () => ({ format: 'majsoul-mjai-v1', seat: 0, events: [{ type: 'tsumo', actor: 0, pai: '9p' }] }) };
+  const p = panel(options); await flush();
+  p.element('model-hand').onchange({ target: { checked: true } });
+  p.element('model-preview').onclick(); await flush();
+  assert.match(p.html(), /majsoul-mjai-v1/); assert.doesNotMatch(p.html(), /mj-analysis-v2/);
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const sent = p.messages.find(m => m.type === 'model:analyze');
+  assert.equal(sent.provider, 'mjai');
+  assert.deepEqual(sent.engineRequest, options.engineRequest());
+  const response = modelResult(); response.engine = { action: { type: 'reach', actor: 0 } };
+  response.result.decision = { action: 'unknown', tile: null, reasons: ['engine-reach'] };
+  p.resolve(response); await pending;
+  assert.match(p.html(), /analysis-decision"><span>立直意向/);
+  options.provider = 'chat'; p.configChanged(); await flush();
+  assert.doesNotMatch(p.html(), /engine-reach|当前来源：自选本地 mjai/);
+  assert.equal(p.hints.at(-1), null);
+});
+
+test('engine skip action is shown as skipping a response in both summaries', async () => {
+  const p = panel({ provider: 'mjai', engineRequest: () => ({ events: [] }) }); await flush();
+  p.element('model-hand').onchange({ target: { checked: true } });
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const response = modelResult(); response.engine = { action: { type: 'none' } };
+  response.result.decision = { action: 'unknown', tile: null, reasons: [] };
+  p.resolve(response); await pending;
+  assert.equal((p.html().match(/跳过响应/g) || []).length, 2);
 });
