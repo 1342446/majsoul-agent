@@ -4,6 +4,8 @@
 
 A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and manually send selected game data to an LLM service of your choice. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
 
+**Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
+
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
 This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
@@ -14,11 +16,11 @@ The project is maintained at [1342446/majsoul-agent](https://github.com/1342446/
 
 ## Features
 
+- **Bring your own model API:** customize the endpoint, model ID, and API key to use different compatible services. Select table information, all or selected discard pools, and optionally your own hand; preview the payload and manually request danger or discard advice.
 - **In-game panel:** your hand and drawn tile, all players’ discards and melds, scores, round information, and opponents’ riichi alerts. Drag the title bar to move the panel; its position persists after refresh.
 - **Dora display:** indicators and corresponding dora shown side by side, including honor-tile cycles, red fives, and three-player manzu rules. Hidden ura-dora is not inferred.
 - **Match history:** browse wins, draws, final hand scores, and score changes by match, hand, and honba. Collection continues while viewing an older hand.
 - **Replay inspection:** parse an already downloaded replay and inspect it with an independent event cursor, including all four hands when present in the replay.
-- **Bring your own model:** configure an OpenAI Chat Completions-compatible endpoint. Select table information, all or selected discard pools, and optionally your own hand; preview the payload and manually request danger or discard advice.
 
 Local history retains up to 20 matches and 100 hands per match, evicting the oldest matches at roughly 4 MiB total. Records are end-of-hand snapshots, not event-by-event replays. Refreshes or disconnects may split a match into separate records. Tiles are sorted by suit; manually rearranging tiles in the game is not mirrored.
 
@@ -60,6 +62,14 @@ npm run eval
 
 ## LLM setup
 
+The full edition accepts your own model API; no project-specific service or account is required. It saves one configuration at a time. Edit it to switch models or providers.
+
+| Service type | How to connect |
+| --- | --- |
+| Cloud model or compatible third-party gateway | Enter the full HTTPS Chat Completions endpoint, model ID, and your API key |
+| Local model service | Enable its Chat Completions-compatible API and enter a localhost or 127.0.0.1 address with its port; leave the key empty if authentication is not required |
+| Service offering only another native protocol | Use a gateway that exposes a Chat Completions-compatible API, then configure the gateway endpoint |
+
 1. Open `模型分析 → 模型设置`, enable analysis, and enter the full endpoint URL, model ID, and API key.
 2. Example: `https://api.openai.com/v1/chat/completions`. Compatible local services can use `http://localhost:PORT/v1/chat/completions` or `http://127.0.0.1:PORT/v1/chat/completions`; the key may be empty when authentication is unnecessary.
 3. Save and grant host access for the configured service, then select the data to send. Your hand is excluded by default; confirm your seat before including it.
@@ -73,7 +83,7 @@ The extension computes shape-based shanten and improving tiles locally for stand
 
 Model output must follow a JSON Schema; JSON code fences are accepted. The extension rejects discard suggestions outside your hand or unsupported by locally legal candidates. Claims that a tile is genbutsu require local evidence from the relevant opponent’s discards. Shanten and improving-tile counts come from local calculations; model-provided numeric fields outside the contract are rejected. The preview shows the actual outgoing data, and local calculations run in the background component.
 
-The endpoint must support non-streaming `POST /chat/completions` with string content in `choices[0].message.content`; provider-side `response_format` support is not required. Native Anthropic, Gemini, and Responses API formats are not directly supported. Requests time out after 25 seconds, with one concurrent request per tab.
+The endpoint must support non-streaming `POST /chat/completions` with string content in `choices[0].message.content`; provider-side `response_format` support is not required. Native Anthropic, Gemini, and Responses API formats require a compatible gateway. Both request and response formats must be compatible, and the model must follow the JSON Schema described above. Requests time out after 25 seconds, with one concurrent request per tab.
 
 Advice may be wrong or late, calls may incur charges, and the configured provider processes the input. Real provider compatibility and advice quality still need validation. The API key stays in extension-local storage, is read only by the background component, and is excluded from game exports and the page bridge. See [SECURITY.md](SECURITY.md) for details.
 
