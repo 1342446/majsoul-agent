@@ -51,12 +51,12 @@ test('chat base URLs normalize once while preserving prefixes and ports', () => 
   }
 });
 function worker(overrides = {}) {
-  let listener, changed, requests = [], accessLevel, aborted = false, timeout;
+  let listener, changed, requests = [], accessLevel, aborted = false, timeout, analysisPreferences;
   const config = { enabled: true, model: 'mock-model', endpoint: 'https://provider.example/v1/chat/completions', apiKey: 'test-key', ...overrides.config };
   const context = { MJAnalysis: A, MJModelEndpoint: E, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
     setTimeout: overrides.manualTimer ? fn => { timeout = fn; return 1; } : setTimeout,
     clearTimeout: overrides.manualTimer ? () => {} : clearTimeout,
-    chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config }) }, onChanged: { addListener: fn => { changed = fn; } } },
+    chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config, analysisPreferences }), set: async value => { analysisPreferences = value.analysisPreferences; } }, onChanged: { addListener: fn => { changed = fn; } } },
       permissions: { contains: async () => overrides.permission !== false },
       runtime: { id: 'extension-id', getURL: path => 'chrome-extension://extension-id/' + path, openOptionsPage() {}, onMessage: { addListener: fn => { listener = fn; } } } },
     fetch: async (url, options) => {
@@ -207,4 +207,15 @@ test('unknown self seat permits general danger evidence for all four visible sea
   assert.equal(p.responseSchema.properties.danger.items.properties.opponents.maxItems, 4);
   const value = { task: 'danger', danger: [{ tile: '1m', opponents: [0,1,2,3].map(seat => ({ seat, level: seat === 0 ? 'safe' : 'unknown', reasons: ['一般危险牌分析。'] })) }], efficiency: [], decision: { action: 'unknown', tile: null, reasons: [] }, limitations: ['未指定自家，不提供弃牌建议。'] };
   assert.deepEqual(A.parseResult(JSON.stringify(value), p), value);
+});
+
+test('analysis preferences persist only whitelisted booleans and bounded scheduling values', async () => {
+  const w = worker();
+  const response = await w.call({ type: 'model:preferences', preferences: { useModel: true, consent: true, automatic: true, danger: true, modelFromTurn: 99, interval: -1, limit: 'invalid', apiKey: 'do-not-store' } });
+  assert.equal(response.ok, true);
+  const status = await w.call({ type: 'model:status' });
+  assert.equal(status.preferences.modelFromTurn, 18); assert.equal(status.preferences.interval, 1); assert.equal(status.preferences.limit, 20);
+  assert.equal(status.preferences.useModel, true); assert.equal('apiKey' in status.preferences, false);
+  assert.equal(w.requests.length, 0);
+  assert.equal(await w.call({ type: 'model:preferences', preferences: {} }, { ...w.sender, frameId: 1 }), undefined);
 });

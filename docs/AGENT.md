@@ -31,7 +31,7 @@ flowchart LR
 
 ## 执行规则
 
-标准输入是`contracts/snapshot.js`定义的`mj-analysis-v1` DTO，合同同时负责牌面规范化与逐字段白名单。Agent直接使用合同，不依赖获取器state或浏览器API；陌生采集器可直接提供相同DTO。`collector/snapshot-adapter.js`独立负责获取器state与用户授权范围的映射。`analysis.js`只处理任务、提示词、本地计算准备和结果解析；endpoint与权限模式在`adapters/model-endpoint.js`。自家手牌默认不发，对手暗牌和未知字段不进入分析输入。
+标准输入是`contracts/snapshot.js`定义的`mj-analysis-v1` DTO，合同同时负责牌面规范化与逐字段白名单。Agent直接使用合同，不依赖获取器state或浏览器API；陌生采集器可直接提供相同DTO。`collector/snapshot-adapter.js`独立负责获取器state与用户授权范围的映射。`analysis.js`只处理任务、提示词、本地计算准备和结果解析；endpoint与权限模式在`adapters/model-endpoint.js`。默认不调用模型。本地分析使用自家手牌与公开信息；开启模型并确认统一数据授权后，按功能准备模型输入，对手暗牌和未知字段不进入分析输入。
 
 controller持有实时、牌谱、历史和游标，通过注入端口取得存储、时钟、ID和hash；视图与导出为复制数据。`overlay.js`只展示视图并调用controller命令。`apps/collector-app.js`组合独立获取器；`apps/agent-app.js`额外挂载分析面板，传入`snapshot(selection)`函数、座位标签、阶段、局数及游标上下文。分析面板不读取采集器内部布局。销毁时取消在途模型、使准备和模型响应失效；重新挂载重新绑定监听并读取配置。
 

@@ -8,15 +8,16 @@ const C = require('../extension/collector/snapshot-adapter.js');
 const Contract = require('../extension/contracts/snapshot.js');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function panel(options = {}) {
-  let mount, configChanged, resolveAnalysis; const messages = [], elements = new Map(), hints = [], details = [{ dataset: { section: 'controls' }, open: false }], section = { scrollTop: 0 };
+  let mount, configChanged, resolveAnalysis, timerId = 0; const timers = new Map(); const messages = [], elements = new Map(), hints = [], details = [{ dataset: { section: 'controls' }, open: false }], section = { scrollTop: 0 };
   const position = { mode: 'live' }; let collectorCalls = 0, historyCalls = 0, calibrateCalls = 0, roundStartCalls = 0;
   const content = { innerHTML: '', querySelectorAll() { return details; }, querySelector(id) { if (id === '.analysis') return section; if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
   const container = { innerHTML: '', querySelector(id) { return id === '[data-analysis-content]' ? (this.innerHTML.includes('data-analysis-content') ? content : null) : content.querySelector(id); } };
   const state = S.initial('live', 1); Object.assign(state, { round: { wind: 0, index: 0 }, scores: [25000,25000,25000,25000], phase: 'playing', selfHand: ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z','4z'] });
-  const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout,
+  const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout: options.manualTimers ? (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; } : setTimeout,
+    clearTimeout: options.manualTimers ? id => timers.delete(id) : clearTimeout,
     document: { currentScript: { src: 'https://fixture/extension/analysis-panel.js' } }, location: { href: 'https://fixture/tests/preview.html' }, window: { addEventListener() {}, removeEventListener() {} },
     chrome: { runtime: { id: 'fixture', getURL: p => 'chrome-extension://fixture/' + p, sendMessage: async m => {
-      messages.push(m); if (m.type === 'model:status') return { enabled: true, provider: options.provider || 'chat' };
+      messages.push(m); if (m.type === 'model:status') return { enabled: true, provider: options.provider || 'chat', preferences: options.preferences || { useModel: true, consent: true } };
       if (m.type === 'model:prepare') return { ok: true, data: m.provider === 'mjai' ? m.engineRequest : A.prepare(m.snapshot, m.task).data };
       if (m.type === 'model:analyze') return new Promise(resolve => { resolveAnalysis = resolve; }); return { ok: true };
     } }, storage: { onChanged: { addListener: fn => { configChanged = fn; }, removeListener() {} } } } };
@@ -27,11 +28,11 @@ function panel(options = {}) {
     onCursor: cursor => { position.cursor = cursor; render(); }, onSelfSeat: seat => { state.selfSeat = seat; render(); }, onRoundStart: () => roundStartCalls++,
     onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
   render();
-  return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
+  return { timers, fireTimer: () => { const [id, timer] = timers.entries().next().value; timers.delete(id); return timer.fn(); }, render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
 }
 test('panel previews task-specific data and escapes model text while rendering tile cards and local table', async () => {
-  const p = panel(); await flush(); p.element('model-hand').onchange({ target: { checked: true } });
-  p.element('model-task').onchange({ target: { value: 'efficiency' } }); p.element('model-preview').onclick(); await flush();
+  const p = panel(); await flush();
+  p.element('feature-strategy').onchange({ isTrusted: true, target: { checked: false } }); p.element('feature-danger').onchange({ isTrusted: true, target: { checked: false } }); p.element('model-preview').onclick(); await flush();
   assert.match(p.html(), /mj-analysis-v2/); assert.doesNotMatch(p.html(), /tsumogiri/);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   const req = p.messages.find(m => m.type === 'model:analyze'), prep = A.prepare(req.snapshot, req.task);
@@ -44,13 +45,13 @@ test('panel cancellation discards delayed model results and synthetic clicks sen
   const p = panel(); await flush(); await p.element('model-run').onclick({ isTrusted: false });
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
-  p.element('model-cancel').onclick();
+  p.element('model-cancel').onclick({ isTrusted: true });
   p.resolve({ ok: true, model: 'late', result: { danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['late-result'] }, limitations: [] } });
   await pending; assert.doesNotMatch(p.html(), /late-result/); assert.match(p.html(), /已取消分析/);
 });
 
 test('task and configuration changes invalidate pending results rather than refilling the panel', async () => {
-  for (const change of [p => p.element('model-task').onchange({ target: { value: 'danger' } }), p => p.configChanged()]) {
+  for (const change of [p => p.element('feature-efficiency').onchange({ isTrusted: true, target: { checked: false } }), p => p.configChanged()]) {
     const p = panel(); await flush(); const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
     change(p); p.resolve({ ok: true, model: 'late', result: { danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['late-old-task'] }, limitations: [] } });
     await pending; assert.doesNotMatch(p.html(), /late-old-task/); assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
@@ -59,7 +60,7 @@ test('task and configuration changes invalidate pending results rather than refi
 
 test('destroy cancels pending work and remount reloads configuration with default authorization', async () => {
   const p = panel(); await flush();
-  p.element('model-hand').onchange({ target: { checked: true } });
+
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   p.destroy();
   const oldHtml = p.html(), statusCalls = p.messages.filter(m => m.type === 'model:status').length;
@@ -69,7 +70,7 @@ test('destroy cancels pending work and remount reloads configuration with defaul
   p.render(); await flush();
   assert.equal(p.messages.filter(m => m.type === 'model:status').length, statusCalls + 1);
   assert.doesNotMatch(p.html(), /destroyed-result/);
-  assert.match(p.html(), /未发送自家手牌/);
+  assert.match(p.html(), /调用模型/);
   assert.doesNotMatch(p.html(), /正在分析/);
 });
 
@@ -80,7 +81,7 @@ test('hints only describe the matching live hand and never alter sending authori
   const p = panel(); await flush();
   assert.equal(p.hints.at(-1), null);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
-  assert.equal(p.messages.find(m => m.type === 'model:analyze').snapshot.selfHand, undefined);
+  assert.deepEqual(Array.from(p.messages.find(m => m.type === 'model:analyze').snapshot.selfHand), p.state.selfHand);
   p.resolve(modelResult()); await pending;
   const value = p.hints.at(-1);
   assert.deepEqual(Array.from(value.hand), p.state.selfHand);
@@ -132,13 +133,11 @@ test('empty replay explains how to load records and never substitutes the live r
   assert.doesNotMatch(p.html(), /id="analysis-replay-cursor"/);
 });
 
-test('scope and task changes retain clearly stale output while clearing hints', async () => {
+test('feature changes clear old output and hints', async () => {
   const p = panel(); await flush();
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
-  p.element('model-rivers').onchange({ target: { value: 'none' } });
-  assert.match(p.html(), /旧结果/); assert.match(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
-  p.element('model-task').onchange({ target: { value: 'danger' } });
-  assert.match(p.html(), /旧结果/); assert.match(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
+  p.element('feature-danger').onchange({ isTrusted: true, target: { checked: false } });
+  assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
 });
 
 test('disclosures and scroll persist and utility entry points call supplied callbacks', async () => {
@@ -147,7 +146,7 @@ test('disclosures and scroll persist and utility entry points call supplied call
   const previousHtml = p.html();
   p.state.lastStep++; p.render();
   assert.equal(p.details[0].open, true); assert.equal(p.section.scrollTop, 128);
-  assert.equal(p.html(), previousHtml);
+  assert.equal(p.details[0].open, true);
   assert.match(p.html(), /立直警戒 · 南家 · &lt;西家&gt;/);
   for (const id of ['analysis-collector', 'analysis-history', 'analysis-calibrate']) p.element(id).onclick();
   assert.deepEqual(p.calls(), [1, 1, 1]);
@@ -232,28 +231,18 @@ test('compact summary keeps hand and metadata folded while candidates switch exp
   assert.match(main(), /analysis-decision[^]*1m\.svg/);
 });
 
-test('optional engine requires complete scope before exporting events or sending a request', async () => {
+test('optional engine cannot send before model consent', async () => {
   let calls = 0;
-  const p = panel({ provider: 'mjai', engineRequest: () => { calls++; return { format: 'majsoul-mjai-v1', events: [] }; } });
-  await flush();
+  const p = panel({ provider: 'mjai', preferences: { useModel: true, consent: false }, engineRequest: () => { calls++; return { events: [] }; } }); await flush();
   await p.element('model-run').onclick({ isTrusted: true });
-  assert.equal(calls, 0);
-  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
-  assert.match(p.html(), /需要授权/);
-  p.element('model-hand').onchange({ target: { checked: true } });
-  p.element('model-rivers').onchange({ target: { value: 'none' } });
-  await p.element('model-run').onclick({ isTrusted: true });
-  assert.equal(calls, 0);
-  p.element('model-rivers').onchange({ target: { value: 'all' } });
-  p.element('model-game').onchange({ target: { checked: false } });
-  await p.element('model-run').onclick({ isTrusted: true });
-  assert.equal(calls, 0);
+  assert.equal(calls, 0); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  assert.match(p.html(), /确认数据授权/);
 });
 
 test('engine preview matches its event input and provider switching clears results and hints', async () => {
   const options = { provider: 'mjai', engineRequest: () => ({ format: 'majsoul-mjai-v1', seat: 0, events: [{ type: 'tsumo', actor: 0, pai: '9p' }] }) };
   const p = panel(options); await flush();
-  p.element('model-hand').onchange({ target: { checked: true } });
+
   p.element('model-preview').onclick(); await flush();
   assert.match(p.html(), /majsoul-mjai-v1/); assert.doesNotMatch(p.html(), /mj-analysis-v2/);
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
@@ -272,10 +261,86 @@ test('engine preview matches its event input and provider switching clears resul
 
 test('engine skip action is shown as skipping a response in both summaries', async () => {
   const p = panel({ provider: 'mjai', engineRequest: () => ({ events: [] }) }); await flush();
-  p.element('model-hand').onchange({ target: { checked: true } });
+
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   const response = modelResult(); response.engine = { action: { type: 'none' } };
   response.result.decision = { action: 'unknown', tile: null, reasons: [] };
   p.resolve(response); await pending;
   assert.equal((p.html().match(/跳过响应/g) || []).length, 2);
+});
+
+const toggle = (p, id, checked) => p.element(id).onchange({ isTrusted: true, target: { checked } });
+
+test('default local mode computes hand and danger without any model request, including preview', async () => {
+  const p = panel({ preferences: {} }); await flush();
+  p.element('model-preview').onclick(); await new Promise(resolve => setTimeout(resolve, 10));
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.match(p.html(), /本地分析 · 未调用模型/); assert.match(p.html(), /向听/); assert.match(p.html(), /<table>/);
+  assert.equal(p.messages.some(m => ['model:analyze', 'model:prepare'].includes(m.type)), false);
+  assert.doesNotMatch(p.html(), /id="model-(game|hand|rivers|task)"/);
+});
+
+test('automatic decisions merge features once, do not repeat on repaint, and cancel on the next position', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true } }); await flush();
+  p.state.turn = p.state.selfSeat; p.state.lastStep = 1; p.render();
+  assert.equal(p.timers.size, 1); p.fireTimer(); await flush();
+  assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
+  assert.equal(p.messages.find(m => m.type === 'model:analyze').task, 'combined');
+  p.resolve(modelResult()); await flush(); p.render(); assert.equal(p.timers.size, 0);
+  p.state.lastStep = 2; p.render(); assert.ok([...p.timers.values()][0].delay > 7000); p.fireTimer(); await flush();
+  p.state.turn = (p.state.selfSeat + 1) % 4; p.state.lastStep = 3; p.render();
+  p.resolve(modelResult()); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
+  assert.equal(p.hints.at(-1), null); assert.equal(p.timers.size, 0);
+  p.destroy();
+});
+
+test('model threshold uses local analysis before the selected turn and model analysis starting at it', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, modelFromTurn: 7 } }); await flush();
+  p.state.turn = p.state.selfSeat; p.state.lastStep = 1; p.render(); p.fireTimer(); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  assert.match(p.html(), /本地分析 · 未调用模型/);
+  p.state.players[p.state.selfSeat].discards = Array.from({ length: 6 }, (_, i) => ({ tile: `${i + 1}p` }));
+  p.state.lastStep = 7; p.render(); p.fireTimer(); await flush();
+  assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
+  p.resolve(modelResult()); await flush(); p.destroy();
+});
+
+test('model off, consent revocation, replay and disabled features suppress automatic model calls', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true } }); await flush();
+  p.state.turn = p.state.selfSeat; p.render();
+  toggle(p, 'model-use', false); p.fireTimer(); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  toggle(p, 'model-use', true); p.element('model-consent').onclick({ isTrusted: true }); assert.equal(p.timers.size, 0);
+  p.element('model-consent').onclick({ isTrusted: true });
+  p.element('analysis-mode-replay').onclick(); assert.equal(p.timers.size, 0);
+  for (const key of ['danger', 'efficiency', 'strategy']) toggle(p, 'feature-' + key, false);
+  await p.element('model-run').onclick({ isTrusted: true }); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  p.destroy();
+});
+
+test('automatic model cap stops further requests but manual analysis remains available', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, limit: 1 } }); await flush();
+  p.state.turn = p.state.selfSeat; p.state.lastStep = 1; p.render(); p.fireTimer(); await flush(); p.resolve(modelResult()); await flush();
+  p.state.lastStep = 2; p.render(); assert.equal(p.timers.size, 0);
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 2); p.resolve(modelResult()); await pending; p.destroy();
+});
+
+test('disabling strategic advice retains mathematical discard comparison and saved feature settings', async () => {
+  const p = panel({ preferences: { useModel: false } }); await flush();
+  p.state.selfHand[13] = '5z'; p.render();
+  toggle(p, 'feature-strategy', false);
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.match(p.html(), /仅按牌效率比较/); assert.ok(p.hints.at(-1).decision.tile);
+  const saved = p.messages.find(m => m.type === 'model:preferences'); assert.equal(saved.preferences.strategy, false);
+  assert.equal(saved.preferences.danger, true); assert.equal(saved.preferences.efficiency, true);
+  p.destroy();
+});
+
+test('local completed shape is identified without recommending a discard', async () => {
+  const p = panel({ preferences: {} }); await flush();
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.match(p.html(), /当前手牌已成和牌形/); assert.equal(p.hints.at(-1).decision.tile, null);
+  p.destroy();
 });

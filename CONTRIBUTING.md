@@ -19,7 +19,7 @@ npm run build
 ## 修改与验证
 
 - 消息解析修改 `protocol.js`；采集兼容性修改 `capture.js`；状态规则修改 `state.js`，为真实规则错误补最小人工事件测试。
-- 模型输入字段在`contracts/snapshot.js`的DTO白名单中声明；获取器布局变化只改`collector/snapshot-adapter.js`。Agent和分析核心只消费DTO，不导入获取器state或controller。网络与密钥留在后台，endpoint规则在`adapters/model-endpoint.js`。保留手动发送与数据范围选择。
+- 模型输入字段在`contracts/snapshot.js`的DTO白名单中声明；获取器布局变化只改`collector/snapshot-adapter.js`。Agent和分析核心只消费DTO，不导入获取器state或controller。网络与密钥留在后台，endpoint规则在`adapters/model-endpoint.js`。保留手动分析、纯本地模式和模型数据授权；按功能自动整理数据，自动调用须受时机、去重和调用上限约束。
 - 状态、历史、游标与导出逻辑放在`collector/controller.js`，DOM展示在`overlay.js`；浏览器消息、存储和资源路径在`collector/browser-adapter.js`。端口可注入以便Node测试，视图和导出须保持复制隔离。
 - 组合关系放在`apps/collector-app.js`和`apps/agent-app.js`；分析面板只接收快照函数和展示输入，不读取采集器内部布局。
 - 界面变更核对桌面及窄窗口、拖动、收起和牌谱模式；不要用模拟页面宣称真实牌局已验证。

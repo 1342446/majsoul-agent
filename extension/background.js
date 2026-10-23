@@ -12,8 +12,15 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   const game = sender.tab && sender.frameId === 0 && sender.url?.startsWith('https://game.maj-soul.com/');
   if (message?.type === 'model:settings' && game) { chrome.runtime.openOptionsPage(); respond({ ok: true }); return; }
+  if (message?.type === 'model:preferences' && game) {
+    const p = message.preferences || {}, preferences = {};
+    for (const key of ['danger', 'efficiency', 'strategy', 'automatic', 'useModel', 'consent']) preferences[key] = p[key] === true;
+    for (const [key, min, max, fallback] of [['modelFromTurn', 1, 18, 1], ['interval', 1, 60, 8], ['limit', 1, 100, 20]]) preferences[key] = Number.isFinite(p[key]) ? Math.min(max, Math.max(min, Math.trunc(p[key]))) : fallback;
+    chrome.storage.local.set({ analysisPreferences: preferences }).then(() => respond({ ok: true })).catch(() => respond({ ok: false }));
+    return true;
+  }
   if (message?.type === 'model:status' && game) {
-    chrome.storage.local.get('modelConfig').then(({ modelConfig: c }) => respond({ enabled: !!c?.enabled, model: c?.model || '', provider: c?.provider === 'mjai' ? 'mjai' : 'chat' })).catch(() => respond({ enabled: false, provider: 'chat' })); return true;
+    chrome.storage.local.get(['modelConfig', 'analysisPreferences']).then(({ modelConfig: c, analysisPreferences }) => respond({ preferences: analysisPreferences, enabled: !!c?.enabled, model: c?.model || '', provider: c?.provider === 'mjai' ? 'mjai' : 'chat' })).catch(() => respond({ enabled: false, provider: 'chat' })); return true;
   }
   if (message?.type === 'model:cancel' && game) { pending.get(sender.tab.id)?.abort(); respond({ ok: true }); return; }
   if (message?.type === 'model:prepare' && game) {

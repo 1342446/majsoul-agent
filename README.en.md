@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English** | [日本語](README.ja.md)
 
-A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and manually send selected game data to an LLM service of your choice. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
+A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically after consent. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
 
 **Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
 
@@ -71,20 +71,22 @@ The full edition accepts your own model API; no project-specific service or acco
 | Local model service | Enable its Chat Completions-compatible API and enter a localhost or 127.0.0.1 address with its port; leave the key empty if authentication is not required |
 | Service offering only another native protocol | Use a gateway that exposes a Chat Completions-compatible API, then configure the gateway endpoint |
 
-1. Expand `分析设置 · 发送范围` in the analysis card, open `模型设置`, enable analysis, and enter the full endpoint URL, model ID, and API key.
-2. Example: `https://api.openai.com/v1/chat/completions`. Compatible local services can use `http://localhost:PORT/v1/chat/completions` or `http://127.0.0.1:PORT/v1/chat/completions`; the key may be empty when authentication is unnecessary.
-3. Save and grant host access for the configured service, then select the data to send. Your hand is excluded by default; confirm your seat before including it.
-4. Select dangerous-tile advice, discard advice, or both. Expand `预览发送数据` to inspect the payload, then start analysis manually.
+Local analysis is available without an API. The card offers danger, hand-efficiency and offense/defense switches, with a combined preset. Model calls and automatic analysis are both off by default.
 
-Each request uses a snapshot taken when clicked. Results are marked stale when the table or selected data changes. Viewing and analysis remain available with incomplete collection; details appear in the collapsed collection status and exported data.
+1. To use a model, open `分析设置 · 调用时机与数据授权`, configure your service in `模型设置`, and grant its host permission.
+2. Enable `调用模型` and confirm consent to send public table information and your own hand. Your seat must be known; opponents' hidden tiles and account credentials are excluded.
+3. Analyze manually, or enable `自动分析`. Choose every turn or from turn N onward (initially turn 7, adjustable from 2–18). Earlier turns use local calculations. Turn numbers are your discard count plus one.
+4. Automatic calls run only at your own discard decisions, combining enabled modules in one request. The default minimum interval is 8 seconds, with 20 automatic model calls per round; both are adjustable. Replays remain manual. Changes invalidate old results and cancel pending requests. Round counters reset when the panel is reloaded.
 
-To annotate game tiles, open `分析设置 · 发送范围 → 校准手牌提示` at the table. Position the frame over 13 concealed slots, the gap, and the drawn slot, then confirm. Calibration is saved relative to a single visible game Canvas. It assumes manzu, pinzu, souzu, and honors in that order, with shorter hands aligned left after calls; it does not detect individual tile coordinates or follow manual rearrangements. Recalibrate after layout changes or misalignment. Unknown hands, multiple canvases, replays, and historical views receive no markers. Current output shows recommendations and qualitative risk, not fabricated probabilities derived from preferences or unseen-tile upper bounds.
+With model calls disabled, local shanten, improving tiles and genbutsu/suji/kabe evidence require no model request. Integrated strategic explanations require a model. You can inspect analysis data or revoke model consent in settings.
+
+To annotate game tiles, open `分析设置 · 调用时机与数据授权 → 校准手牌提示` at the table. Position the frame over 13 concealed slots, the gap, and the drawn slot, then confirm. Calibration is saved relative to a single visible game Canvas. It assumes manzu, pinzu, souzu, and honors in that order, with shorter hands aligned left after calls; it does not detect individual tile coordinates or follow manual rearrangements. Recalibrate after layout changes or misalignment. Unknown hands, multiple canvases, replays, and historical views receive no markers. Current output shows recommendations and qualitative risk, not fabricated probabilities derived from preferences or unseen-tile upper bounds.
 
 The three analysis tasks use separate data contracts and modular prompts. Danger analysis retains selected players’ ordered discards, discard-from-hand/draw distinctions, riichi, and melds. Tile-efficiency analysis sends only your hand, melds, rules, and authorized visible-tile counts, excluding full discard histories. Combined offense/defense analysis uses both modules in one request.
 
 The extension computes shape-based shanten and improving tiles locally for standard hands, seven pairs, and thirteen orphans. The model explains these results and weighs offense against defense. The table’s unseen-tile counts are upper bounds, not counts of tiles remaining in the wall; zero means all copies have been seen. For high-shanten hands, the calculation compares shape improvements rather than exhaustively searching every future draw/discard sequence. A 13-tile hand shows only its current shanten and improving tiles. After riichi, only the confirmed newly drawn tile can be recommended for discard; if it is unknown, no specific discard is suggested. Completed hands are analyzed only as mathematical reviews.
 
-Model output must follow a JSON Schema; JSON code fences are accepted. The extension rejects discard suggestions outside your hand or unsupported by locally legal candidates. Claims that a tile is genbutsu require local evidence from the relevant opponent’s discards. Shanten and improving-tile counts come from local calculations; model-provided numeric fields outside the contract are rejected. The preview shows the actual outgoing data, and local calculations run in the background component.
+Model output must follow a JSON Schema; JSON code fences are accepted. The extension rejects discard suggestions outside your hand or unsupported by locally legal candidates. Claims that a tile is genbutsu require local evidence from the relevant opponent’s discards. Shanten and improving-tile counts come from local calculations; model-provided numeric fields outside the contract are rejected. The preview shows the actual outgoing data, and local calculations run within the extension.
 
 The endpoint must support non-streaming `POST /chat/completions` with string content in `choices[0].message.content`; provider-side `response_format` support is not required. Native Anthropic, Gemini, and Responses API formats require a compatible gateway. Both request and response formats must be compatible, and the model must follow the JSON Schema described above. Requests time out after 25 seconds, with one concurrent request per tab.
 
