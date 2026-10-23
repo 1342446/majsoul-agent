@@ -5,6 +5,14 @@
 .analysis .warn{color:#ef9b8f}
 .analysis-heading{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;color:#f0f2f1}
 .analysis-state{font-size:11px;color:#b5bfc5}
+.analysis-modes{display:flex;gap:5px;margin-bottom:10px}
+.analysis-modes button{flex:1}
+.analysis-modes button[aria-pressed="true"]{border-color:#8bd4d1;color:#8bd4d1;background:#2b343b}
+.analysis-replay{padding:8px;margin-bottom:10px;border:1px solid #46515a;border-radius:6px}
+.analysis-replay-heading{display:flex;justify-content:space-between;align-items:center;gap:6px}
+.analysis-replay-heading label{margin:0}
+.analysis-replay>input{width:100%;margin:8px 0;accent-color:#8bd4d1}
+.analysis-replay p{font-size:11px}
 .analysis-riichi{border:1px solid #ef9b8f;background:#2b343b;color:#ef9b8f;padding:7px 9px;border-radius:7px}
 .analysis-decision{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .analysis-decision>span{font-size:19px;font-weight:650}

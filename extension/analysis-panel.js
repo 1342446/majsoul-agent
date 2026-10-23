@@ -91,7 +91,15 @@
     for (const detail of container.querySelectorAll?.('details[data-section]') || []) detailsState[detail.dataset.section] = detail.open;
     if (hooks.onHints && hooks.onHints !== nextHooks.onHints) hooks.onHints(null);
     hooks = nextHooks;
-    current = analysisView; context = position; repaint = render;
+    const sourceChanged = context && (context.mode !== position?.mode || context.replayRevision !== position?.replayRevision || JSON.stringify(context.historyView) !== JSON.stringify(position?.historyView));
+    const cursorChanged = context && context.cursor !== position?.cursor;
+    if (sourceChanged || cursorChanged) {
+      requestId++;
+      if (busy && available) send({ type: 'model:cancel' }).catch(() => {});
+      busy = false; failure = ''; preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
+      if (sourceChanged) { result = null; focusTile = null; }
+    }
+    current = analysisView; context = { ...position }; repaint = render;
     connect();
     const stale = !!result && result.fingerprint !== fingerprint();
     const live = context?.mode === 'live' && current.phase === 'playing';
@@ -109,7 +117,7 @@
     const r = result?.result;
     const candidateTiles = [...new Set([...(r?.efficiency || []).map(e => e.tile), ...(r?.danger || []).map(d => d.tile)])].filter(t => t && t !== r?.decision?.tile).slice(0, 3);
     const hand = Array.isArray(current.selfHand) ? current.selfHand : [];
-    const activeResult = live && !stale ? r : null;
+    const activeResult = (live || context?.mode === 'replay') && !stale ? r : null;
     const kind = tile => String(tile).replace(/^0([mps])$/, '5$1');
     const drawnIndex = current.drawnTile ? hand.lastIndexOf(current.drawnTile) : -1;
     const handFace = (tile, index) => {
@@ -128,6 +136,14 @@
     const candidateHtml = focusTiles.length ? `<div class="analysis-candidates"><span class="muted">比较</span>${focusTiles.map((tile, index) => `<button id="model-candidate-${index}" data-candidate-tile="${escape(tile)}" aria-pressed="${tile === focusTile}" aria-label="查看${escape(MJSnapshotContract.label(tile))}的风险和效率理由">${face(tile)}</button>`).join('')}</div>${focusSummary}` : '';
     const roundLabel = current.round ? `${['东', '南', '西', '北'][current.round.wind] || '东'}${Number(current.round.index) + 1}局` : '等待开局';
     const selfLabel = Number.isInteger(current.selfSeat) ? current.seatLabels[current.selfSeat] : '';
+    const replay = context?.mode === 'replay', recordCount = current.recordCount || 0, cursor = context?.cursor || 0;
+    const modeControls = typeof current.onMode === 'function' ? `<div class="analysis-modes" role="group" aria-label="分析模式"><button id="analysis-mode-live" aria-pressed="${context?.mode === 'live'}">实时对局</button><button id="analysis-mode-replay" aria-pressed="${replay}">牌谱复盘</button></div>` : '';
+    const replayControls = replay ? `<div class="analysis-replay">
+      ${recordCount ? `<div class="analysis-replay-heading"><label>复盘视角 <select id="analysis-replay-seat" aria-label="复盘视角"><option value="">请选择</option>${current.seatLabels.map((label, i) => `<option value="${i}">${escape(label)}</option>`).join('')}</select></label><span class="muted">事件 ${cursor} / ${recordCount}</span></div>
+      <input id="analysis-replay-cursor" aria-label="复盘事件游标" type="range" min="0" max="${recordCount}" value="${cursor}">
+      <div class="controls"><button id="analysis-replay-start">本局开局</button><button id="analysis-replay-prev" ${cursor <= 0 ? 'disabled' : ''}>上一事件</button><button id="analysis-replay-next" ${cursor >= recordCount ? 'disabled' : ''}>下一事件</button></div>
+      <p class="muted">按所选事件分析，游标需手动与游戏画面对齐。</p>` : '<p class="muted">请在雀魂中打开牌谱，载入后可选择视角和分析位置。</p>'}
+      </div>` : '';
 
     const settings = `<div class="controls"><button id="model-settings" ${!available ? 'disabled' : ''}>模型设置</button><button id="model-refresh" ${!available ? 'disabled' : ''}>刷新设置状态</button></div>
       ${provider === 'mjai' ? '<p class="muted">当前来源：自选本地 mjai 引擎。需授权对局、全部公开牌河、自家手牌及本局动作顺序；仅支持无副露四麻决策。</p>' : ''}
@@ -138,20 +154,33 @@
       <p class="muted">${selection.hand ? '点击分析时发送已授权的数据。' : '未发送自家手牌：不能建议具体弃牌。'}</p>
       <div class="analysis-calibration"><button id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button><p class="muted">${current.hintsReady ? '首次使用需校准手牌位置；可随时重新校准。' : '进入游戏牌桌后可校准手牌提示。'}</p></div><button id="model-preview">${preview ? '收起' : '预览'}发送数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
     container.innerHTML = `<link rel="stylesheet" href="${escape(styleUrl)}"><section class="analysis" aria-label="模型分析">
-      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · 自家${escape(selfLabel)}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : enabled ? '手动分析' : '模型未开启'}</span></header>
-      ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">立直警戒 · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
+      ${modeControls}${replayControls}
+      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${replay ? '视角' : '自家'}${escape(selfLabel)}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : enabled ? '手动分析' : '模型未开启'}</span></header>
+      ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
       <div class="analysis-main" role="status" aria-live="polite">
       ${stale ? '<p class="warn analysis-stale">局面或发送范围已变化，以下为旧结果，请重新分析。</p>' : ''}
       ${r ? `<div class="analysis-decision"><span>${escape(decisionLabel(result))}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : '查看局面，再决定是否分析'}</strong><p class="muted">${!available ? '离线演示不发送模型请求。' : enabled ? '仅在你点击分析时发送所选数据。' : '在分析设置中接入自己的模型。'}</p></div>`}
-      ${current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
+      ${replay ? '' : current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
       ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
       </div>
-      <div class="analysis-actions"><button id="model-run" ${!enabled || busy || !!error ? 'disabled' : ''}>${busy ? '正在分析…' : '分析当前局面'}</button>${busy ? '<button id="model-cancel">取消</button>' : ''}</div>
+      <div class="analysis-actions"><button id="model-run" ${!enabled || busy || !!error ? 'disabled' : ''}>${busy ? '正在分析…' : replay ? '分析所选局面' : '分析当前局面'}</button>${busy ? '<button id="model-cancel">取消</button>' : ''}</div>
       ${disclosure('reasons', '详细分析', `${handSection}${r ? `${resultHtml(result)}${localHtml(result.localAnalysis, result.positionPhase)}<p class="analysis-meta muted">${escape(result.model)} · ${escape(result.time)}${stale ? ' · 旧结果' : ' · 对应分析时快照'}</p>` : '<p class="muted">尚未生成分析结果。</p>'}`)}
       ${disclosure('controls', '分析设置 · 发送范围', settings)}
       <footer class="analysis-footer"><button id="analysis-collector">牌局获取器</button><button id="analysis-history">整场记录</button></footer>
       </section>`;
     const $ = id => container.querySelector('#' + id);
+    if (modeControls) {
+      $('analysis-mode-live').onclick = () => current.onMode('live');
+      $('analysis-mode-replay').onclick = () => current.onMode('replay');
+    }
+    if (replay && recordCount) {
+      $('analysis-replay-seat').value = Number.isInteger(current.selfSeat) ? String(current.selfSeat) : '';
+      $('analysis-replay-seat').onchange = e => current.onSelfSeat?.(e.target.value === '' ? null : Number(e.target.value));
+      $('analysis-replay-cursor').onchange = e => current.onCursor?.(Number(e.target.value));
+      $('analysis-replay-start').onclick = () => current.onRoundStart?.();
+      $('analysis-replay-prev').onclick = () => { if (cursor > 0) current.onCursor?.(cursor - 1); };
+      $('analysis-replay-next').onclick = () => { if (cursor < recordCount) current.onCursor?.(cursor + 1); };
+    }
     const section = container.querySelector('.analysis'); if (section) section.scrollTop = oldScroll;
     for (const detail of container.querySelectorAll?.('details[data-section]') || []) { detail.open = !!detailsState[detail.dataset.section]; detail.ontoggle = () => { detailsState[detail.dataset.section] = detail.open; }; }
     focusTiles.forEach((tile, index) => { $('model-candidate-' + index).onclick = () => { focusTile = tile; render(); }; });

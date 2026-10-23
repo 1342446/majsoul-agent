@@ -9,7 +9,7 @@ const Contract = require('../extension/contracts/snapshot.js');
 const flush = () => new Promise(resolve => setImmediate(resolve));
 function panel(options = {}) {
   let mount, configChanged, resolveAnalysis; const messages = [], elements = new Map(), hints = [], details = [{ dataset: { section: 'controls' }, open: false }], section = { scrollTop: 0 };
-  const position = { mode: 'live' }; let collectorCalls = 0, historyCalls = 0, calibrateCalls = 0;
+  const position = { mode: 'live' }; let collectorCalls = 0, historyCalls = 0, calibrateCalls = 0, roundStartCalls = 0;
   const container = { innerHTML: '', querySelectorAll() { return details; }, querySelector(id) { if (id === '.analysis') return section; if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
   const state = S.initial('live', 1); Object.assign(state, { round: { wind: 0, index: 0 }, scores: [25000,25000,25000,25000], phase: 'playing', selfHand: ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z','4z'] });
   const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout,
@@ -21,9 +21,12 @@ function panel(options = {}) {
     } }, storage: { onChanged: { addListener: fn => { configChanged = fn; }, removeListener() {} } } } };
   if (options.offline) delete context.chrome;
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/analysis-panel.js'), 'utf8'), context);
-  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
+  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], recordCount: options.recordCount || 0,
+    onMode: mode => { position.mode = mode; position.cursor = mode === 'replay' ? 1 : null; render(); },
+    onCursor: cursor => { position.cursor = cursor; render(); }, onSelfSeat: seat => { state.selfSeat = seat; render(); }, onRoundStart: () => roundStartCalls++,
+    onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
   render();
-  return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML, configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
+  return { render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML, configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
 }
 test('panel previews task-specific data and escapes model text while rendering tile cards and local table', async () => {
   const p = panel(); await flush(); p.element('model-hand').onchange({ target: { checked: true } });
@@ -83,10 +86,49 @@ test('hints only describe the matching live hand and never alter sending authori
   assert.notEqual(value.hand, p.state.selfHand);
   assert.equal(value.decision.tile, '1m');
   p.position.mode = 'history'; p.render(); assert.equal(p.hints.at(-1), null);
-  p.position.mode = 'live'; p.render(); assert.ok(p.hints.at(-1));
+  p.position.mode = 'live'; p.render(); assert.equal(p.hints.at(-1), null);
+  const next = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await next;
   p.state.selfHand[0] = '9s'; p.render(); assert.equal(p.hints.at(-1), null);
   assert.match(p.html(), /旧结果/);
   p.destroy(); assert.equal(p.hints.at(-1), null);
+});
+
+test('visible mode switch exposes replay navigation and clears results without sending analysis', async () => {
+  const p = panel({ recordCount: 3 }); await flush();
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
+  assert.ok(p.hints.at(-1));
+  const requests = p.messages.filter(m => m.type === 'model:analyze').length;
+  p.element('analysis-mode-replay').onclick();
+  assert.equal(p.position.mode, 'replay');
+  assert.match(p.html(), /id="analysis-mode-replay" aria-pressed="true"/);
+  assert.match(p.html(), /事件 1 \/ 3/); assert.match(p.html(), /分析所选局面/);
+  assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
+  p.element('analysis-replay-next').onclick(); assert.equal(p.position.cursor, 2);
+  p.element('analysis-replay-prev').onclick(); assert.equal(p.position.cursor, 1);
+  p.element('analysis-replay-cursor').onchange({ target: { value: '3' } }); assert.equal(p.position.cursor, 3);
+  p.element('analysis-replay-start').onclick(); assert.equal(p.roundStartCalls(), 1);
+  p.element('analysis-replay-seat').onchange({ target: { value: '2' } }); assert.equal(p.state.selfSeat, 2);
+  const review = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await review;
+  assert.match(p.html(), /analysis-hand-tile is-suggested/); assert.equal(p.hints.at(-1), null);
+  p.element('analysis-mode-live').onclick(); assert.doesNotMatch(p.html(), /测试结论|analysis-replay-heading/);
+  assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, requests + 1);
+});
+
+test('mode, replay replacement and cursor changes cancel pending work and ignore delayed results', async () => {
+  for (const change of [p => p.element('analysis-mode-live').onclick(), p => { p.position.replayRevision = 2; p.render(); }, p => p.element('analysis-replay-next').onclick()]) {
+    const p = panel({ recordCount: 3 }); await flush(); p.element('analysis-mode-replay').onclick();
+    const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+    change(p); p.resolve(modelResult()); await pending;
+    assert.doesNotMatch(p.html(), /测试结论|正在分析…/);
+    assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
+    assert.equal(p.hints.at(-1), null);
+  }
+});
+
+test('empty replay explains how to load records and never substitutes the live result', async () => {
+  const p = panel(); await flush(); p.element('analysis-mode-replay').onclick();
+  assert.match(p.html(), /请在雀魂中打开牌谱/);
+  assert.doesNotMatch(p.html(), /id="analysis-replay-cursor"/);
 });
 
 test('scope and task changes retain clearly stale output while clearing hints', async () => {

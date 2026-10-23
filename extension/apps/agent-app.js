@@ -29,11 +29,15 @@
           selfHand: hand.tiles.concat(hand.drawn ? [hand.drawn] : []), drawnTile: hand.drawn,
           riichiLabels: view.historical ? [] : S.opponentRiichi(state).map(i => S.seatWind(state, i) + '家'),
           hintsReady: calibration.available, hintsCalibrated: calibration.calibrated,
+          recordCount: view.recordCount,
+          onMode: mode => controller.setMode(mode), onCursor: cursor => controller.setCursor(cursor),
+          onRoundStart: () => controller.roundStart(), onSelfSeat: seat => controller.setSelfSeat(seat),
           onCollector: () => panel.open(), onHistory: () => panel.open({ history: true }),
           onCalibrateHints: () => { hints.startCalibration(); }
         };
         root.MJAnalysisPanel.mount(container, analysisView, {
           mode: view.historical ? 'history' : view.mode, historyView: view.historyView,
+          replayRevision: view.mode === 'replay' ? view.replayRevision : null,
           cursor: !view.historical && view.mode === 'replay' ? view.cursor : null
         }, render, hintHooks);
         const replaySlot = document.createElement('div');

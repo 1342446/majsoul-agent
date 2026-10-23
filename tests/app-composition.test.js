@@ -66,6 +66,25 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   // Full replay data is only pulled by an explicit export command, never by rendering.
   assert.equal(typeof naga.exportReplay, 'function');
   assert.equal(naga.exportReplay().format, 'mj-observer-v1');
+  const liveHand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1p','2p','3p','4p'];
+  const replayHand = ['5p','6p','7p','1s','2s','3s','4s','5s','6s','7s','8s','9s','1z'];
+  const round = { kind: 'NewRound', source: 'live', step: 0, wind: 0, round: 0, honba: 0, sticks: 0, remaining: 69, doras: ['1p'], scores: [25000,25000,25000,25000], hand: liveHand, operation: { seat: 1, types: [1] } };
+  configured.controller.receive({ type: 'event', payload: round });
+  configured.controller.receive({ type: 'replay', payload: { records: [
+    { ...round, source: 'replay', hand: undefined, hands: [replayHand,replayHand,replayHand,replayHand] },
+    { kind: 'DealTile', source: 'replay', step: 1, seat: 0, tile: '2z' }
+  ] } });
+  assert.equal(mounted[2].mode, 'replay'); assert.equal(mounted[1].recordCount, 2);
+  mounted[1].onSelfSeat(0);
+  assert.deepEqual(Array.from(mounted[1].selfHand), replayHand);
+  mounted[1].onCursor(2); assert.equal(mounted[1].drawnTile, '2z');
+  mounted[1].onCursor(1); assert.equal(mounted[1].selfHand.includes('2z'), false);
+  mounted[1].onMode('live'); assert.equal(mounted[2].mode, 'live');
+  assert.deepEqual(Array.from(mounted[1].selfHand), liveHand);
+  configured.controller.receive({ type: 'event', payload: { kind: 'DealTile', source: 'live', step: 1, seat: 1, tile: '8p' } });
+  mounted[1].onMode('replay'); assert.equal(mounted[2].cursor, 1);
+  assert.deepEqual(Array.from(mounted[1].selfHand), replayHand);
+  mounted[1].onMode('live'); assert.equal(mounted[1].drawnTile, '8p');
 });
 test('presentation module loads with no DOM and never mounts automatically', () => {
   const context = {}; vm.runInNewContext(read('overlay.js'), context);
