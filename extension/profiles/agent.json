@@ -6,7 +6,8 @@
   "web_accessible_resources": [
     {
       "resources": [
-        "tiles/*.svg"
+        "tiles/*.svg",
+        "analysis-panel.css"
       ],
       "matches": [
         "https://game.maj-soul.com/*"
@@ -40,6 +41,8 @@
         "analysis.js",
         "analysis-panel.js",
         "overlay.js",
+        "floating-panel.js",
+        "hand-hints.js",
         "apps/agent-app.js"
       ],
       "run_at": "document_start",

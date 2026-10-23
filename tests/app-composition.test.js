@@ -37,20 +37,29 @@ test('collector composition mounts without loading any model capability', () => 
   assert.equal(mounted, 1); assert.equal(configured.title, '雀魂牌局获取器');
   assert.equal(configured.extensionSlot, undefined); assert.equal(configured.controller.getView().mode, 'live');
 });
-test('agent composition gives panel only selected snapshot provider and display metadata', () => {
-  const { window } = surface(); let configured, mounted;
+test('agent composition keeps collection, floating analysis and hand hints on independent surfaces', () => {
+  const { window } = surface(); let configured, floating, mounted, opens = [], hints = [], renders = 0;
+  const draw = () => { renders++; floating.onRender({}, draw); };
   const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
     MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null },
-    MJCollectorPanel: { create(options) { configured = options; return { mount() {}, destroy() {} }; } },
+    MJCollectorPanel: { create(options) { configured = options; return { mount() {}, open(value) { opens.push(value); }, destroy() {} }; } },
+    MJFloatingPanel: { create(options) { floating = options; return { mount: draw, render: draw, destroy() {} }; } },
+    MJHandHints: { create() { return { update(value) { hints.push(value); }, getCalibrationState: () => ({ available: true, calibrated: false }), startCalibration() {}, destroy() {} }; } },
     MJCollectorSnapshot: { snapshot(state, selection) { return { phase: state.phase, selected: selection.game }; } },
     MJAnalysisPanel: { mount(...args) { mounted = args; } } };
   vm.runInNewContext(read('collector/controller.js'), context);
   vm.runInNewContext(read('collector/browser-adapter.js'), context);
   vm.runInNewContext(read('apps/agent-app.js'), context);
-  configured.extensionSlot({}, configured.controller.getView(), () => {});
-  const view = mounted[1]; assert.deepEqual(Object.keys(view).sort(), ['phase','round','seatLabels','snapshot']);
+  assert.equal(configured.extensionSlot, undefined); assert.equal(configured.collapsed, true);
+  assert.equal(floating.id, 'mj-agent-host'); assert.equal(floating.title, 'Majsoul Agent');
+  const view = mounted[1];
+  assert.equal('players' in view, false); assert.equal('state' in view, false);
   assert.deepEqual(view.snapshot({ game: true }), { phase: 'waiting', selected: true });
   assert.equal(mounted[2].mode, 'live');
+  view.onCollector(); view.onHistory(); assert.equal(opens.length, 2); assert.equal(opens[1].history, true);
+  mounted[4].onHints({ hand: ['1m'] }); assert.equal(hints[0].hand[0], '1m');
+  const before = renders; configured.controller.receive({ type: 'status', payload: { gameEvents: 1 } });
+  assert.equal(renders, before + 1);
 });
 test('presentation module loads with no DOM and never mounts automatically', () => {
   const context = {}; vm.runInNewContext(read('overlay.js'), context);

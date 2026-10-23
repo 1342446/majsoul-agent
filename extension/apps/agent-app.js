@@ -5,23 +5,40 @@
     if (document.getElementById('mj-observer-host')) return null;
     const ports = root.MJCollectorBrowser.create({ window: root.window, scriptUrl: scriptUrl });
     const controller = root.MJCollectorController.create(ports);
-    const panel = root.MJCollectorPanel.create({ controller, title: 'Majsoul Agent', tileBase: ports.tileBase,
-      extensionSlot(container, view, render) {
-        const state = view.state;
+    const hints = root.MJHandHints.create({ onCalibrationChange(state) {
+      analysis.render();
+      if (!state.editing) document.getElementById('mj-agent-host')?.shadowRoot?.querySelector('#analysis-calibrate')?.focus({ preventScroll: true });
+    } });
+    const hintHooks = { onHints: value => hints.update(value) };
+    const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: true });
+    const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul Agent', positionKey: 'mj-agent-panel-position-v1',
+      onRender(container, render) {
+        const view = controller.getView(), state = view.state, S = root.__MJ_OBSERVER_STATE_V1__;
+        const selfHand = (state.source === 'replay' ? state.players[state.selfSeat]?.hand : state.selfHand) || [];
+        const drawnTile = state.drawnTiles[state.selfSeat] || null;
+        const hand = S.handLayout(selfHand, drawnTile);
+        const calibration = hints.getCalibrationState();
         const analysisView = {
           snapshot: selection => root.MJCollectorSnapshot.snapshot(state, selection),
-          seatLabels: state.players.slice(0, state.scores.length === 3 ? 3 : 4).map((_, i) => root.__MJ_OBSERVER_STATE_V1__.seatWind(state, i)),
-          phase: state.phase, round: state.round
+          seatLabels: state.players.slice(0, state.scores.length === 3 ? 3 : 4).map((_, i) => S.seatWind(state, i) + '家'),
+          phase: state.phase, round: state.round, selfSeat: state.selfSeat,
+          selfHand: hand.tiles.concat(hand.drawn ? [hand.drawn] : []), drawnTile: hand.drawn,
+          riichiLabels: view.historical ? [] : S.opponentRiichi(state).map(i => S.seatWind(state, i) + '家'),
+          hintsReady: calibration.available, hintsCalibrated: calibration.calibrated,
+          onCollector: () => panel.open(), onHistory: () => panel.open({ history: true }),
+          onCalibrateHints: () => { hints.startCalibration(); }
         };
         root.MJAnalysisPanel.mount(container, analysisView, {
           mode: view.historical ? 'history' : view.mode, historyView: view.historyView,
           cursor: !view.historical && view.mode === 'replay' ? view.cursor : null
-        }, render);
-      },
+        }, render, hintHooks);
+      }
     });
-    panel.mount();
+    panel.mount(); analysis.mount();
+    // The analysis renderer invalidates stale hints synchronously with each state change.
+    const unsubscribe = controller.subscribe(() => analysis.render());
     const disconnect = ports.connect(controller);
-    return { controller, panel, destroy() { disconnect(); root.MJAnalysisPanel.destroy?.(); panel.destroy(); } };
+    return { controller, panel, analysis, hints, destroy() { disconnect(); unsubscribe(); root.MJAnalysisPanel.destroy?.(); hints.destroy(); analysis.destroy(); panel.destroy(); } };
   }
   root.MJAgentApp = { start };
   if (typeof document !== 'undefined') {

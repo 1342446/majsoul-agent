@@ -3,7 +3,8 @@
   function create(options) {
   const { controller } = options;
   const S = root.__MJ_OBSERVER_STATE_V1__;
-  let host, shadow, collapsed = false;
+  let host, shadow, collapsed = options.collapsed !== false;
+  const detailsState = new Map();
   const cleanup = [];
   let currentView, mode, live, replayState, recordCount, recentEvents, cursor, diagnostics, stats, connections, historyMatches, historyMatchId, historyView, historyWarning;
   function refreshView() {
@@ -18,8 +19,9 @@
     try { localStorage.setItem(positionStorageKey, JSON.stringify(panelPosition)); } catch (_) {}
   }
   function placePanel(position) {
-    if (!position || !host) return;
+    if (!host) return;
     const rect = host.getBoundingClientRect(), margin = 8;
+    position ||= { left: 14, top: innerHeight * .4 };
     panelPosition = {
       left: Math.max(margin, Math.min(position.left, innerWidth - rect.width - margin)),
       top: Math.max(margin, Math.min(position.top, innerHeight - rect.height - margin))
@@ -60,7 +62,18 @@
     const onResize = () => { placePanel(panelPosition); if (panelPosition) savePanelPosition(); };
     window.addEventListener('blur', onBlur);
     window.addEventListener('resize', onResize);
-    cleanup.push(() => window.removeEventListener('blur', onBlur), () => window.removeEventListener('resize', onResize));
+    const fullscreen = () => {
+      if (typeof host.showPopover !== 'function') return;
+      if (document.fullscreenElement) {
+        host.setAttribute('popover', 'manual');
+        if (!host.matches(':popover-open')) host.showPopover();
+      } else if (host.hasAttribute('popover')) {
+        host.hidePopover(); host.removeAttribute('popover');
+      }
+      placePanel(panelPosition);
+    };
+    document.addEventListener('fullscreenchange', fullscreen);
+    cleanup.push(() => window.removeEventListener('blur', onBlur), () => window.removeEventListener('resize', onResize), () => document.removeEventListener('fullscreenchange', fullscreen));
     const observer = new ResizeObserver(() => {
       if (!panelPosition || panelDrag) return;
       const previous = panelPosition;
@@ -68,6 +81,7 @@
       if (previous.left !== panelPosition.left || previous.top !== panelPosition.top) savePanelPosition();
     });
     observer.observe(host); cleanup.push(() => observer.disconnect());
+    fullscreen();
   }
   const suits = ['东', '南', '西', '北'];
   const windName = wind => suits.includes(wind) ? wind + '家' : '座风待定';
@@ -124,26 +138,26 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const css = `
-    :host{all:initial;color:#19344a;font:13px/1.5 "Microsoft YaHei UI","Microsoft YaHei",sans-serif}
+    :host{all:initial;color:#f0f2f1;font:13px/1.5 "Microsoft YaHei UI","Microsoft YaHei",sans-serif}:host::backdrop{background:transparent;pointer-events:none}
     *{box-sizing:border-box}button,select,input{font:inherit}button,select{cursor:pointer}
-    button{background:#edf3f7;border:1px solid #c4d4df;color:#19344a;border-radius:5px;padding:5px 9px}
-    button:hover{background:#dbe9f1}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #ba841b;outline-offset:2px}
-    button:disabled{cursor:default;opacity:.45}.shell{display:flex;flex-direction:column;max-height:calc(100vh - 20px);width:min(430px,calc(100vw - 24px));background:#f9fcff;border:1px solid #9db4c4;border-radius:9px;box-shadow:0 8px 28px #0004;overflow:hidden}
-    header{display:flex;flex:none;align-items:center;gap:10px;background:#214764;color:#fff;padding:10px 12px;cursor:grab;user-select:none;touch-action:none}:host([data-dragging]) header{cursor:grabbing}header strong{font-size:15px;flex:1}header button{padding:2px 8px;color:#fff;background:transparent;border-color:#7293ac}
-    .body{padding:12px;min-height:0;max-height:min(76vh,760px);overflow:auto}.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.controls select{padding:5px;color:#19344a;background:white;border:1px solid #b4c9d8;border-radius:5px;max-width:100%}
-    .status{margin:10px 0;padding:8px 10px;background:#e5f0f3;border-left:3px solid #24838a}.status.bad{background:#fff2d7;border-color:#b67d10}
-    .muted{color:#607786}.meta{display:flex;gap:12px;flex-wrap:wrap}.round{font-size:21px;font-weight:700;color:#214764}.meta span{white-space:nowrap}
+    button{background:#2b343b;border:1px solid #46515a;color:#f0f2f1;border-radius:5px;padding:5px 9px}
+    button:hover{background:#3a454e}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #8bd4d1;outline-offset:2px}
+    button:disabled{cursor:default;opacity:.45}.shell{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);width:min(430px,calc(100vw - 24px));background:#20272d;border:1px solid #46515a;border-radius:9px;box-shadow:0 8px 28px #0004;overflow:hidden}
+    header{display:flex;flex:none;align-items:center;gap:10px;background:#2b343b;color:#f0f2f1;padding:10px 12px;cursor:grab;user-select:none;touch-action:none}:host([data-dragging]) header{cursor:grabbing}header strong{font-size:14px;flex:1}header button{padding:2px 8px;color:#fff;background:transparent;border-color:#46515a}
+    .body{padding:12px;min-height:0;overflow:auto}.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.controls select{padding:5px;color:#f0f2f1;background:#20272d;border:1px solid #46515a;border-radius:5px;max-width:100%}
+    .status{margin:10px 0;padding:8px 10px;background:#2b343b;border-left:3px solid #8bd4d1}.status.bad{background:#3b3028;border-color:#ef9b8f}
+    .muted{color:#b5bfc5}.meta{display:flex;gap:12px;flex-wrap:wrap}.round{font-size:21px;font-weight:700;color:#f0f2f1}.meta span{white-space:nowrap}
     .dora-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .riichi-alert{margin:10px 0;padding:10px 12px;background:#fff0ec;border:2px solid #b44335;border-radius:6px;color:#962e25;font-weight:700;font-size:15px}.drawn-tile{display:inline-flex;margin-left:10px}
-    .round-result{margin:10px 0;padding:8px;background:#eaf3ed;border-left:3px solid #398466}.round-result h3{margin-top:0}.score-table{width:100%;border-collapse:collapse;font-size:12px}.score-table th,.score-table td{padding:4px;text-align:right;border-bottom:1px solid #cdded4}.score-table th:first-child,.score-table td:first-child{text-align:left}.history-rounds{padding-left:20px}.history-rounds li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #dae5ed}#history-match{max-width:100%;padding:5px}.history-view{padding:8px;margin:8px 0;background:#fff2d7}
-    h3{font-size:13px;margin:12px 0 5px}p{margin:6px 0}.tiles{display:flex;gap:3px;flex-wrap:wrap;align-items:flex-start}.tile{display:inline-block;flex:none;width:23px;height:37px;padding:0;object-fit:contain;vertical-align:middle;border-radius:2px}.tile.unknown{display:inline-flex;align-items:center;justify-content:center;background:#e1e9ee;border:1px solid #91a6b5;color:#536b7c;font-size:18px}.river>span{position:relative}.called:after{content:'';position:absolute;left:2px;right:2px;top:18px;border-top:2px solid #5f7281;transform:rotate(-35deg);pointer-events:none}.river small{display:block;text-align:center;font-size:9px;line-height:12px;color:#607786}.riichi .tile{outline:2px solid #b23d3a;outline-offset:1px}.events .tile{width:20px;height:32px}.player{border-top:1px solid #dae5ed;margin-top:10px;padding-top:8px}.player-head{display:flex;justify-content:space-between;gap:10px}.player-head b{color:#214764}
-    details{margin-top:12px}summary{cursor:pointer;font-weight:700}.events{list-style:none;padding:0;margin:6px 0}.events li{padding:5px 0;border-bottom:1px solid #e3ebf0;font-size:12px;overflow-wrap:anywhere}.warn{color:#966311}.slider{width:100%;accent-color:#24838a}.replay-controls{margin-top:10px;padding:8px;background:#eaf1f7}.foot{margin-top:12px;font-size:11px;color:#607786}.badge{background:#dcecf0;border-radius:3px;padding:1px 5px}.pill{width:auto}header .indicator{width:8px;height:8px;background:#d7b565;border-radius:50%}.connected .indicator{background:#70d4c0}
+    .riichi-alert{margin:10px 0;padding:10px 12px;background:#3a2d2c;border:2px solid #ef9b8f;border-radius:6px;color:#ef9b8f;font-weight:700;font-size:15px}.drawn-tile{display:inline-flex;margin-left:10px}
+    .round-result{margin:10px 0;padding:8px;background:#2b343b;border-left:3px solid #8bd4d1}.round-result h3{margin-top:0}.score-table{width:100%;border-collapse:collapse;font-size:12px}.score-table th,.score-table td{padding:4px;text-align:right;border-bottom:1px solid #46515a}.score-table th:first-child,.score-table td:first-child{text-align:left}.history-rounds{padding-left:20px}.history-rounds li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #46515a}#history-match{max-width:100%;padding:5px}.history-view{padding:8px;margin:8px 0;background:#3b3028}
+    h3{font-size:13px;margin:12px 0 5px}p{margin:6px 0}.tiles{display:flex;gap:3px;flex-wrap:wrap;align-items:flex-start}.tile{display:inline-block;flex:none;width:23px;height:37px;padding:0;object-fit:contain;vertical-align:middle;border-radius:2px}.tile.unknown{display:inline-flex;align-items:center;justify-content:center;background:#2b343b;border:1px solid #46515a;color:#b5bfc5;font-size:18px}.river>span{position:relative}.called:after{content:'';position:absolute;left:2px;right:2px;top:18px;border-top:2px solid #b5bfc5;transform:rotate(-35deg);pointer-events:none}.river small{display:block;text-align:center;font-size:9px;line-height:12px;color:#b5bfc5}.riichi .tile{outline:2px solid #ef9b8f;outline-offset:1px}.events .tile{width:20px;height:32px}.player{border-top:1px solid #46515a;margin-top:10px;padding-top:8px}.player-head{display:flex;justify-content:space-between;gap:10px}.player-head b{color:#f0f2f1}
+    details{margin-top:12px}summary{cursor:pointer;font-weight:700}.events{list-style:none;padding:0;margin:6px 0}.events li{padding:5px 0;border-bottom:1px solid #46515a;font-size:12px;overflow-wrap:anywhere}.warn{color:#ef9b8f}.slider{width:100%;accent-color:#8bd4d1}.replay-controls{margin-top:10px;padding:8px;background:#2b343b}.foot{margin-top:12px;font-size:11px;color:#b5bfc5}.badge{background:#2b343b;border-radius:3px;padding:1px 5px}.pill{width:auto}.pill header{gap:8px;padding:8px 11px}.pill header strong{font-size:12px}.pill header button{font-size:11px}.body{overscroll-behavior:contain}select{color:#f0f2f1;background:#2b343b}#history-match{background:#2b343b;color:#f0f2f1;border:1px solid #46515a;border-radius:4px}header .indicator{width:8px;height:8px;background:#d7b565;border-radius:50%}.connected .indicator{background:#70d4c0}
   `;
   function render() {
     if (!shadow) return;
     refreshView();
     const oldScroll = shadow.querySelector('.body')?.scrollTop || 0;
-    const oldDetails = [...shadow.querySelectorAll('details')].map(d => d.open);
+    shadow.querySelectorAll('details[id]').forEach(d => detailsState.set(d.id, d.open));
     const historical = viewedState();
     const s = historical || (mode === 'live' ? live : replayState);
     const displayLive = historical ? s.source === 'live' : mode === 'live';
@@ -161,7 +175,7 @@
       ${displayLive && s.selfSeat === i ? '' : riverHtml(p, S.seatWind(s, i) + '家牌河')}
       ${p.melds.length ? '<div class="tiles" style="margin-top:5px">副露 ' + p.melds.map(m => '<span>' + m.tiles.map(tileHtml).join('') + '</span>').join(' ') + '</div>' : ''}</div>`).join('');
     shadow.innerHTML = `<style>${css}</style><section class="shell ${collapsed ? 'pill' : ''} ${connected ? 'connected' : ''}" aria-label="雀魂牌局观察器">
-      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${esc(options.title || '雀魂牌局获取器')}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
+      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${esc(collapsed ? '牌局' : options.title || '雀魂牌局获取器')}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
       ${collapsed ? '' : `<div class="body"><div class="controls"><select id="mode" aria-label="数据来源"><option value="live" ${mode === 'live' ? 'selected' : ''}>实时消息</option><option value="replay" ${mode === 'replay' ? 'selected' : ''}>牌谱记录</option></select>
       <select id="seat" aria-label="自家座风" ${s.round && !historical ? '' : 'disabled'}><option value="" ${s.selfSeat === null ? 'selected' : ''}>自家：${mode === 'replay' ? '请选择' : '待识别'}</option>${s.round ? s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}" ${s.selfSeat === i ? 'selected' : ''}>自家：${S.seatWind(s, i)}</option>`).join('') : ''}</select><button id="export">导出核对记录</button></div>
       ${historical ? '<div class="history-view">历史记录 · ' + roundText(s) + ' · ' + s.honba + '本场 <button id="history-return">返回当前牌局</button></div>' : ''}
@@ -174,14 +188,14 @@
       ${displayLive ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver : historical ? '' : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${recordCount}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${recordCount}" value="${cursor}"><div class="controls"><button id="start" ${!recordCount ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= recordCount ? 'disabled' : ''}>下一事件</button></div></div>`}
       ${playerHtml}
       <div id="extension-slot"></div>
-      <details><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : historical ? '<li class="muted">历史记录保存结算快照，不含逐事件回放。</li>' : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
-      <details><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p>${s.warnings.map(w => '<p class="muted">' + esc(w) + '</p>').join('')}<ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>
+      <details id="recent-events"><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : historical ? '<li class="muted">历史记录保存结算快照，不含逐事件回放。</li>' : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
+      <details id="collector-status"><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p>${s.warnings.map(w => '<p class="muted">' + esc(w) + '</p>').join('')}<ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>
       </div>`}</section>`;
     shadow.getElementById('collapse').onclick = () => { collapsed = !collapsed; render(); };
     placePanel(panelPosition);
     if (collapsed) return;
     shadow.querySelector('.body').scrollTop = oldScroll;
-    [...shadow.querySelectorAll('details')].forEach((d, i) => { if (oldDetails[i] !== undefined) d.open = oldDetails[i]; });
+    shadow.querySelectorAll('details[id]').forEach(d => { if (detailsState.has(d.id)) d.open = detailsState.get(d.id); });
     options.extensionSlot?.(shadow.getElementById('extension-slot'), currentView, render);
     shadow.getElementById('export').onclick = exportData;
     shadow.getElementById('mode').onchange = e => { controller.setMode(e.target.value); };
@@ -210,12 +224,13 @@
   function mount(container = document.documentElement) {
     if (host || !container || document.getElementById('mj-observer-host')) return;
     host = document.createElement('div'); host.id = 'mj-observer-host';
-    Object.assign(host.style, { position: 'fixed', right: '12px', top: '12px', zIndex: '2147483647' });
+    Object.assign(host.style, { position: 'fixed', inset: 'auto', left: '14px', top: '40%', zIndex: '2147483647', margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible' });
     shadow = host.attachShadow({ mode: 'open' }); container.appendChild(host);
     enablePanelDragging(); render();
     return host;
   }
-  return { mount, render, destroy() { unsubscribe(); cleanup.splice(0).forEach(fn => fn()); clearTimeout(renderTimer); host?.remove(); host = null; shadow = null; },
+  return { mount, render, open({ history = false } = {}) { collapsed = false; render(); if (history) { const details = shadow?.getElementById('round-history'); if (details) { details.open = true; detailsState.set('round-history', true); details.scrollIntoView({ block: 'nearest' }); } } },
+    destroy() { unsubscribe(); cleanup.splice(0).forEach(fn => fn()); clearTimeout(renderTimer); host?.remove(); host = null; shadow = null; },
     renderers: { riverHtml, eventHtml } };
   }
   root.MJCollectorPanel = { create };

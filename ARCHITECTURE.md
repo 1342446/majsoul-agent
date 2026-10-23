@@ -16,7 +16,9 @@
 | `extension/history-storage.js` | 整场记录的本地存储消息处理，与模型配置分键保存 | 扩展 Service Worker |
 | `extension/collector/controller.js` | 实时与牌谱状态、游标、历史、订阅、命令和独立导出 | 纯核心 / Node |
 | `extension/collector/browser-adapter.js` | 页面桥接校验、去重、浏览器存储和资源路径端口 | ISOLATED 世界 |
-| `extension/overlay.js` | controller视图展示、命令绑定、刷新节流和可选扩展槽 | ISOLATED 世界 |
+| `extension/overlay.js` | 默认收起的独立获取器、controller视图、命令绑定与刷新节流 | ISOLATED 世界 |
+| `extension/floating-panel.js` | 通用拖动、折叠、位置记忆与视窗约束，不认识采集或分析业务 | ISOLATED 世界 |
+| `extension/hand-hints.js` | 独立手动校准、Canvas几何映射、建议与高危标记，不读取controller或请求模型 | ISOLATED / Node 测试 |
 | `extension/contracts/snapshot.js` | 标准授权DTO白名单、牌面规范化和标签 | 纯合同 / Node |
 | `extension/collector/snapshot-adapter.js` | 获取器state与用户选择转换为标准DTO | 纯输入适配 / Node |
 | `extension/apps/collector-app.js` / `agent-app.js` | 创建端口、controller和UI；完整版注入快照适配及分析面板 | 组合入口 |
@@ -25,6 +27,7 @@
 | `extension/analysis.js` | 标准快照的任务准备、提示词、本地计算准备、JSON Schema和结果校验 | 后台 / 离线预览 / Node |
 | `extension/adapters/model-endpoint.js` | 模型地址校验与主机权限模式 | 后台 / 设置 / Node |
 | `extension/analysis-panel.js` | 数据范围与任务选择、发送预览、结构化牌面建议、本地效率表和过期提示 | ISOLATED 世界 |
+| `extension/analysis-panel.css` | 分析卡样式，通过扩展本地资源载入Shadow DOM | 扩展静态资源 |
 | `extension/background.js` | 身份校验、读取配置、验证授权、添加密钥、调用模型、取消与超时 | 扩展 Service Worker |
 | `extension/agent.js` | 任务计划、已授权快照、本地分析和模型解释工具接线 | 后台 / Node |
 | `extension/harness.js` | 工具注册、步数与时间预算、取消、无内容运行轨迹 | 后台 / Node |

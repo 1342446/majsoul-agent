@@ -12,12 +12,13 @@ This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with
 
 The project is maintained at [1342446/majsoul-agent](https://github.com/1342446/majsoul-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
-![Offline simulated panel with Chinese UI; not a live capture](docs/images/observer-preview.png)
+![Floating analysis card with synthetic game data and model output](docs/images/agent-floating-preview.png)
 
 ## Features
 
 - **Bring your own model API:** customize the endpoint, model ID, and API key to use different compatible services. Select table information, all or selected discard pools, and optionally your own hand; preview the payload and manually request danger or discard advice.
-- **In-game panel:** your hand and drawn tile, all players’ discards and melds, scores, round information, and opponents’ riichi alerts. Drag the title bar to move the panel; its position persists after refresh.
+- **Floating analysis card:** a separate, persistent result card with a draggable title and saved position. Click candidate tiles to compare explanations; hand details, local efficiency tables, and traces stay folded. The collector starts collapsed and opens independently for discards, dora, and history.
+- **Hand annotations:** after manual calibration, recommendations and high-risk tiles appear over the current live hand, including matching copies. Normal annotations let game clicks pass through. A changed state clears old markers immediately; delayed results cannot annotate a newer state.
 - **Dora display:** indicators and corresponding dora shown side by side, including honor-tile cycles, red fives, and three-player manzu rules. Hidden ura-dora is not inferred.
 - **Match history:** browse wins, draws, final hand scores, and score changes by match, hand, and honba. Collection continues while viewing an older hand.
 - **Replay inspection:** parse an already downloaded replay and inspect it with an independent event cursor, including all four hands when present in the replay.
@@ -39,7 +40,7 @@ The independent `extension/profiles/agent.json` and `collector.json` profiles se
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.
 3. Choose **Load unpacked** and select that directory. For the dedicated extension ZIP, select the extracted directory that directly contains `manifest.json`.
 4. Refresh the Mahjong Soul page so the collector loads before the game connection is established, then enter a game or reopen a replay.
-5. The `Majsoul Agent` or `雀魂牌局获取器` panel appears on the right. Drag its title bar or click `收起` to collapse it. Recent events and collection status are collapsed by default.
+5. The full edition shows a separate `Majsoul Agent` card on the right and a collapsed `牌局` collector entry on the left. The collector-only edition shows the left entry. Drag either title to move it; positions are saved independently. Recent events and collection status start collapsed.
 
 After updating, reload the extension in the browser’s extension manager, then refresh the game. Refreshing resets your replay position. Existing connections and previously downloaded replay data cannot be read retroactively.
 
@@ -70,12 +71,14 @@ The full edition accepts your own model API; no project-specific service or acco
 | Local model service | Enable its Chat Completions-compatible API and enter a localhost or 127.0.0.1 address with its port; leave the key empty if authentication is not required |
 | Service offering only another native protocol | Use a gateway that exposes a Chat Completions-compatible API, then configure the gateway endpoint |
 
-1. Open `模型分析 → 模型设置`, enable analysis, and enter the full endpoint URL, model ID, and API key.
+1. Expand `分析设置 · 发送范围` in the analysis card, open `模型设置`, enable analysis, and enter the full endpoint URL, model ID, and API key.
 2. Example: `https://api.openai.com/v1/chat/completions`. Compatible local services can use `http://localhost:PORT/v1/chat/completions` or `http://127.0.0.1:PORT/v1/chat/completions`; the key may be empty when authentication is unnecessary.
 3. Save and grant host access for the configured service, then select the data to send. Your hand is excluded by default; confirm your seat before including it.
 4. Select dangerous-tile advice, discard advice, or both. Expand `预览发送数据` to inspect the payload, then start analysis manually.
 
 Each request uses a snapshot taken when clicked. Results are marked stale when the table or selected data changes. Viewing and analysis remain available with incomplete collection; details appear in the collapsed collection status and exported data.
+
+To annotate game tiles, open `分析设置 · 发送范围 → 校准手牌提示` at the table. Position the frame over 13 concealed slots, the gap, and the drawn slot, then confirm. Calibration is saved relative to a single visible game Canvas. It assumes manzu, pinzu, souzu, and honors in that order, with shorter hands aligned left after calls; it does not detect individual tile coordinates or follow manual rearrangements. Recalibrate after layout changes or misalignment. Unknown hands, multiple canvases, replays, and historical views receive no markers. Current output shows recommendations and qualitative risk, not fabricated probabilities derived from preferences or unseen-tile upper bounds.
 
 The three analysis tasks use separate data contracts and modular prompts. Danger analysis retains selected players’ ordered discards, discard-from-hand/draw distinctions, riichi, and melds. Tile-efficiency analysis sends only your hand, melds, rules, and authorized visible-tile counts, excluding full discard histories. Combined offense/defense analysis uses both modules in one request.
 

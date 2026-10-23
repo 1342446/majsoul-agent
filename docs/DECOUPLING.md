@@ -4,11 +4,13 @@
 
 ## 组合与依赖方向
 
-- `apps/agent-app.js` 组合获取器、显示面板、局面 DTO 适配器与分析面板；`apps/collector-app.js` 只组合获取器与显示面板。两者分别启动应用。
+- `apps/agent-app.js` 组合获取器、独立悬浮分析卡、局面DTO适配器和手牌标记；`apps/collector-app.js` 只组合获取器与显示面板。两者分别启动应用，分析卡不再挂在获取器的扩展槽内。
 - `collector/controller.js` 管理状态、记录和回放，接收存储、时钟、哈希等端口；`collector/browser-adapter.js` 提供 Chrome、页面事件和浏览器存储端口。`overlay.js` 负责显示和用户输入。
 - `contracts/snapshot.js` 定义清洗后的分析输入；`collector/snapshot-adapter.js` 将获取器状态投影为该合同。`analysis-panel.js` 接收 snapshot 函数、座位标签和局面标识，不持有获取器状态机。
 - `agent.js` 仅依赖合同、分析算法和通用执行器；`harness.js` 不认识项目业务模块。HTTP 和权限地址规则在 `adapters/model-endpoint.js`，Chrome 设置与请求执行由 `background.js` 和设置页组装。
 - 获取器内部、浏览器适配器与获取器显示层禁止依赖模型 endpoint、Agent、harness 和分析模块。分析面板禁止直接依赖 Agent。合同、Agent、分析算法、执行器和获取器核心禁止使用 DOM、Chrome、网络及浏览器存储能力。
+
+`floating-panel.js` 只处理通用界面行为，不读取业务模块。`hand-hints.js` 只接收手牌、摸牌、建议与逐对手风险的展示数据，用手动校准映射Canvas位置，不访问controller或Agent。组合入口同步订阅controller，让分析面板在每次局面变化时立即清除不匹配的标记；获取器仍独立节流刷新。当前局面、发送范围、任务和视图上下文共同判断结果是否过期，历史／牌谱结果不能标记实时手牌。标记模块不加入Collector依赖闭包，也不改变手牌外发授权。
 
 本地预览的分析面板会使用 `MJAnalysis.prepare`，因此 Agent content scripts 明确加载合同、本地算法和分析模块；Agent 执行器仍只由后台加载。Collector 的资源闭包不含分析模块、模型地址适配器和设置页。
 

@@ -1,5 +1,6 @@
 node_modules/
 .playwright-cli/
+.playwright-mcp/
 .env
 .env.*
 *.log
