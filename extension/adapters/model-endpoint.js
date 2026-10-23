@@ -13,7 +13,19 @@
     const u = endpoint(value);
     return u.protocol + '//' + u.hostname + '/*';
   }
-  const api = { endpoint, permissionOrigin };
+  function supportsThinking(address, model) {
+    try { return endpoint(address).hostname === 'api.deepseek.com' &&
+      ['deepseek-flash', 'deepseek-v4-pro', 'deepseek-v4-flash', 'deepseek-v4-flash-vision-exp'].includes(model?.trim()); }
+    catch (_) { return false; }
+  }
+  const defaultMaxTokens = thinking => thinking ? 32768 : 8192;
+  function outputOptions(config) {
+    const supported = supportsThinking(config.endpoint, config.model), thinking = supported && config.thinking === true;
+    const max = config.maxTokens ?? defaultMaxTokens(thinking);
+    if (!Number.isInteger(max) || max < 1 || max > 393216) throw new Error('输出上限须为 1–393216 的整数，请按模型支持范围设置。');
+    return { max_tokens: max, ...(supported ? { thinking: { type: thinking ? 'enabled' : 'disabled' } } : {}) };
+  }
+  const api = { endpoint, permissionOrigin, supportsThinking, defaultMaxTokens, outputOptions };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MJModelEndpoint = api;
 })(globalThis);

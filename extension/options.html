@@ -9,6 +9,12 @@
 <label for="endpoint">API 请求地址</label><input id="endpoint" type="url" placeholder="https://api.openai.com/v1" required>
 <p id="endpointHint" class="hint">自动补全 /chat/completions，也可填写完整接口地址。</p>
 <label for="model">模型名称</label><input id="model" placeholder="例如 deepseek-chat" maxlength="200" required>
+<div id="chatOptions">
+<label><input id="thinking" type="checkbox"> 开启思考</label>
+<p id="thinkingHint" class="hint"></p>
+<label for="maxTokens">输出上限（tokens）</label><input id="maxTokens" type="number" min="1" max="393216" step="1" required>
+<p class="hint">包含思考与正文；实际可用上限以模型为准。</p>
+</div>
 <label for="key" id="keyLabel">API Key</label><input id="key" type="password" autocomplete="off" placeholder="本地服务无需密钥时可留空" maxlength="4096">
 <p class="hint">开启模型调用后，将向所配置的服务发送公开牌局信息和自家手牌，可能产生费用。</p>
 <div class="actions"><button type="submit">保存设置</button><button type="button" id="disable">关闭分析</button><button type="button" id="clear">清除配置</button></div>

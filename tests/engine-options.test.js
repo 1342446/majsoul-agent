@@ -8,7 +8,7 @@ const ChatEndpoint = require('../extension/adapters/model-endpoint.js');
 
 async function settings(initial = {}, { permission = true, beforeSet } = {}) {
   const data = structuredClone(initial), calls = [], elements = new Map();
-  for (const id of ['status', 'provider', 'providerHint', 'enabled', 'endpoint', 'endpointHint', 'model', 'key', 'keyLabel', 'config', 'disable', 'clear']) elements.set(id, { value: '', checked: false, textContent: '' });
+  for (const id of ['status', 'provider', 'providerHint', 'enabled', 'endpoint', 'endpointHint', 'model', 'key', 'keyLabel', 'chatOptions', 'thinking', 'thinkingHint', 'maxTokens', 'config', 'disable', 'clear']) elements.set(id, { value: '', checked: false, textContent: '' });
   const local = {
     get: async keys => { calls.push(['get']); return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(key => key in data).map(key => [key, structuredClone(data[key])])); },
     set: async value => { const copied = structuredClone(value); calls.push(['set']); if (beforeSet) await beforeSet(copied); Object.assign(data, copied); },
@@ -66,6 +66,37 @@ test('mjai token is required and permission runs before asynchronous storage', a
   await pending;
   assert.deepEqual(page.data.modelConfig, { provider: 'mjai', enabled: true, endpoint: 'http://127.0.0.1:17341/analyze', model: 'mjai', apiKey: 'ENGINE_SECRET' });
   assert.equal(page.data.analysisProviders.mjai.apiKey, 'ENGINE_SECRET');
+});
+
+test('thinking defaults off, follows mode defaults and preserves custom output limits across providers and reload', async () => {
+  const page = await settings({ modelConfig: { enabled: true, endpoint: 'https://api.deepseek.com', model: 'deepseek-flash' } });
+  assert.equal(page.el('thinking').checked, false); assert.equal(page.el('thinking').disabled, false);
+  assert.equal(Number(page.el('maxTokens').value), 8192);
+  page.el('thinking').checked = true; page.el('thinking').onchange();
+  assert.equal(Number(page.el('maxTokens').value), 32768);
+  page.el('maxTokens').value = '16000';
+  page.el('thinking').checked = false; page.el('thinking').onchange();
+  assert.equal(Number(page.el('maxTokens').value), 16000);
+  page.el('thinking').checked = true; page.el('thinking').onchange();
+  page.select('mjai'); assert.equal(page.el('chatOptions').hidden, true); assert.equal(page.el('maxTokens').disabled, true);
+  page.select('chat'); assert.equal(page.el('thinking').checked, true);
+  await page.submit();
+  assert.equal(page.data.modelConfig.thinking, true); assert.equal(page.data.modelConfig.maxTokens, 16000);
+  const reloaded = await settings(page.data);
+  assert.equal(reloaded.el('thinking').checked, true); assert.equal(Number(reloaded.el('maxTokens').value), 16000);
+});
+
+test('invalid output limits save nothing and unsupported services cannot enable thinking', async () => {
+  const page = await settings();
+  page.el('endpoint').value = 'https://provider.example/v1'; page.el('model').value = 'chat'; page.el('endpoint').oninput();
+  assert.equal(page.el('thinking').disabled, true);
+  for (const value of ['', '0', '1.5', '393217', 'NaN']) {
+    page.el('maxTokens').value = value; await page.submit();
+    assert.match(page.el('status').textContent, /输出上限/);
+    assert.equal('modelConfig' in page.data, false);
+  }
+  page.el('maxTokens').value = '12000'; page.el('thinking').checked = true;
+  await page.submit(); assert.equal(page.data.modelConfig.thinking, false);
 });
 
 test('settings preserve per-provider secrets across reload and clear both providers', async () => {

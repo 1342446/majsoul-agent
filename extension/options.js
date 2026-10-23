@@ -13,7 +13,13 @@ function writeInOrder(operation) {
 }
 function copyProviders(value) { return Object.fromEntries(Object.entries(value).map(([provider, config]) => [provider, { ...config }])); }
 const defaults = provider => ({ provider, enabled: false, endpoint: provider === 'mjai' ? 'http://127.0.0.1:17341/analyze' : '', model: provider === 'mjai' ? 'mjai' : '', apiKey: '' });
-function fields(provider) { return { provider, enabled: $('enabled').checked, endpoint: $('endpoint').value.trim(), model: provider === 'mjai' ? 'mjai' : $('model').value.trim(), apiKey: $('key').value.trim() }; }
+function fields(provider) { return { provider, enabled: $('enabled').checked, endpoint: $('endpoint').value.trim(), model: provider === 'mjai' ? 'mjai' : $('model').value.trim(), apiKey: $('key').value.trim(),
+  ...(provider === 'chat' ? { thinking: !$('thinking').disabled && $('thinking').checked, maxTokens: Number($('maxTokens').value) } : {}) }; }
+function updateThinking() {
+  const supported = currentProvider === 'chat' && MJModelEndpoint.supportsThinking($('endpoint').value.trim(), $('model').value.trim());
+  $('thinking').disabled = !supported;
+  $('thinkingHint').textContent = supported ? '默认关闭；开启后可能增加耗时和费用。' : '思考开关目前支持 DeepSeek Flash / V4 官方接口。';
+}
 function show(provider) {
   const c = drafts[provider] || defaults(provider), engine = provider === 'mjai';
   currentProvider = provider;
@@ -21,6 +27,10 @@ function show(provider) {
   $('endpoint').value = c.endpoint || ''; $('endpoint').placeholder = engine ? 'http://127.0.0.1:17341/analyze' : 'https://api.openai.com/v1';
   $('endpointHint').textContent = engine ? '仅支持 localhost / 127.0.0.1 的 HTTP /analyze 接口。' : '自动补全 /chat/completions，也可填写完整接口地址。';
   $('model').value = engine ? 'mjai' : c.model || ''; $('model').readOnly = engine;
+  $('chatOptions').hidden = engine; $('maxTokens').disabled = engine;
+  $('thinking').checked = c.thinking === true;
+  $('maxTokens').value = Number.isInteger(c.maxTokens) && c.maxTokens >= 1 && c.maxTokens <= 393216 ? c.maxTokens : MJModelEndpoint.defaultMaxTokens(c.thinking === true);
+  updateThinking();
   $('key').value = c.apiKey || ''; $('key').required = engine;
   $('key').placeholder = engine ? '填写本地服务的 Token' : '填写密钥；无密钥的本地服务可留空';
   $('keyLabel').textContent = engine ? 'Bearer Token' : 'API Key';
@@ -34,7 +44,8 @@ async function load(generation = operationGeneration) {
     const item = saved?.[provider];
     if (item && typeof item === 'object') drafts[provider] = { ...defaults(provider), enabled: !!item.enabled,
       endpoint: typeof item.endpoint === 'string' ? item.endpoint : defaults(provider).endpoint,
-      model: provider === 'mjai' ? 'mjai' : typeof item.model === 'string' ? item.model : '', apiKey: typeof item.apiKey === 'string' ? item.apiKey : '' };
+      model: provider === 'mjai' ? 'mjai' : typeof item.model === 'string' ? item.model : '', apiKey: typeof item.apiKey === 'string' ? item.apiKey : '',
+      ...(provider === 'chat' ? { thinking: item.thinking === true, maxTokens: item.maxTokens } : {}) };
   }
   // Older modelConfig values belong exclusively to the chat provider.
   if (c) drafts[providerOf(c)] = { ...defaults(providerOf(c)), ...c, provider: providerOf(c) };
@@ -42,12 +53,19 @@ async function load(generation = operationGeneration) {
 }
 load().catch(() => status('读取设置失败，请重新打开设置页。'));
 $('provider').onchange = () => { drafts[currentProvider] = fields(currentProvider); show($('provider').value === 'mjai' ? 'mjai' : 'chat'); status(''); };
+$('endpoint').oninput = updateThinking;
+$('model').oninput = updateThinking;
+$('thinking').onchange = () => {
+  const previousDefault = MJModelEndpoint.defaultMaxTokens(!$('thinking').checked);
+  if (Number($('maxTokens').value) === previousDefault) $('maxTokens').value = MJModelEndpoint.defaultMaxTokens($('thinking').checked);
+};
 $('config').onsubmit = async event => {
   event.preventDefault();
   const generation = ++operationGeneration;
   try {
     const c = fields(currentProvider), adapter = c.provider === 'mjai' ? MJEngineEndpoint : MJModelEndpoint;
     const url = adapter.endpoint(c.endpoint);
+    if (c.provider === 'chat') MJModelEndpoint.outputOptions(c);
     if (!c.model) throw new Error('请填写模型名称。');
     if (c.provider === 'mjai' && !c.apiKey) throw new Error('请填写本地桥接服务的 Bearer Token。');
     // Request inside the submit gesture, before any asynchronous storage work.

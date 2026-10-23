@@ -75,6 +75,61 @@ function worker(overrides = {}) {
   return { call, analyze, requests, notifications, tabQueries, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
 }
 
+test('official DeepSeek Flash disables default thinking without changing other providers', async () => {
+  for (const [endpoint, model, disabled] of [
+    ['https://api.deepseek.com/chat/completions', 'deepseek-flash', true],
+    ['https://api.deepseek.com/v1/chat/completions', 'deepseek-v4-pro', true],
+    ['https://api.deepseek.com/chat/completions', 'deepseek-reasoner', false],
+    ['https://provider.example/chat/completions', 'deepseek-flash', false]
+  ]) {
+    const w = worker({ config: { endpoint, model } });
+    assert.equal((await w.analyze()).ok, true);
+    const body = JSON.parse(w.requests[0].options.body);
+    assert.equal(body.thinking?.type, disabled ? 'disabled' : undefined);
+    assert.equal(body.max_tokens, 8192); assert.equal(w.requests.length, 1);
+  }
+});
+
+test('worker distinguishes incomplete reasoning, truncation and service failures without exposing response text', async () => {
+  for (const [body, expected] of [
+    [{ choices: [{ finish_reason: 'length', message: { content: '', reasoning_content: 'PRIVATE' } }] }, /长度上限/],
+    [{ choices: [{ finish_reason: 'length', message: { content: '{}' } }] }, /长度上限/],
+    [{ choices: [{ message: { content: null, reasoning_content: 'PRIVATE' } }] }, /仅返回思考内容/],
+    [{ choices: [{ finish_reason: 'content_filter', message: { content: '' } }] }, /过滤/],
+    [{ choices: [{ finish_reason: 'insufficient_system_resource' }] }, /服务中断/],
+    [{ choices: [{ finish_reason: 'aborted' }] }, /服务中断/],
+    [{ error: { message: 'PRIVATE' } }, /接口返回错误/],
+    [{ choices: [{ message: { content: [] } }] }, /正文为空或格式不兼容/],
+    [null, /正文为空或格式不兼容/]
+  ]) {
+    const w = worker({ raw: JSON.stringify(body) }); const result = await w.analyze();
+    assert.equal(result.ok, false); assert.match(result.error, expected);
+    assert.doesNotMatch(result.error, /PRIVATE|Chat Completions/); assert.equal(w.requests.length, 1);
+  }
+});
+
+test('worker honors thinking and configured token limits, with safe defaults for legacy configs', async () => {
+  for (const [config, max, thinking] of [
+    [{}, 8192, 'disabled'],
+    [{ thinking: true }, 32768, 'enabled'],
+    [{ thinking: true, maxTokens: 20000 }, 20000, 'enabled'],
+    [{ thinking: false, maxTokens: 12000 }, 12000, 'disabled']
+  ]) {
+    const w = worker({ config: { endpoint: 'https://api.deepseek.com', model: 'deepseek-flash', ...config } });
+    assert.equal((await w.analyze()).ok, true);
+    const body = JSON.parse(w.requests[0].options.body);
+    assert.equal(body.max_tokens, max); assert.equal(body.thinking.type, thinking);
+  }
+  for (const maxTokens of [0, 1.5, 393217, '8192']) {
+    const w = worker({ config: { maxTokens } });
+    assert.match((await w.analyze()).error, /输出上限/); assert.equal(w.requests.length, 0);
+  }
+  const other = worker({ config: { thinking: true, maxTokens: 15000 } });
+  assert.equal((await other.analyze()).ok, true);
+  const body = JSON.parse(other.requests[0].options.body);
+  assert.equal(body.max_tokens, 15000); assert.equal('thinking' in body, false);
+});
+
 test('trusted model configuration changes notify game tabs without disclosing configuration', async () => {
   const w = worker();
   await w.changed({ analysisPreferences: {} }, 'local');
@@ -109,7 +164,7 @@ test('disabled or permission-denied configuration sends no network request', asy
   }
 });
 test('HTTP errors, invalid JSON, empty content, oversized content and network errors are actionable', async () => {
-  for (const [options, message] of [[{ status: 401 }, /HTTP 401/], [{ raw: 'not json' }, /有效 JSON/], [{ body: {} }, /文本内容/], [{ raw: 'x'.repeat(1024 * 1024 + 1) }, /响应过大/], [{ networkError: true }, /无法连接/]]) {
+  for (const [options, message] of [[{ status: 401 }, /HTTP 401/], [{ raw: 'not json' }, /有效 JSON/], [{ body: {} }, /正文为空或格式不兼容/], [{ raw: 'x'.repeat(1024 * 1024 + 1) }, /响应过大/], [{ networkError: true }, /无法连接/]]) {
     const result = await worker(options).analyze(); assert.equal(result.ok, false); assert.match(result.error, message);
   }
 });
@@ -127,7 +182,7 @@ test('changing or clearing configuration aborts in-flight analysis', async () =>
 test('timeout aborts provider request and releases the per-tab request slot', async () => {
   const w = worker({ wait: true, manualTimer: true }); const first = w.analyze();
   await new Promise(resolve => setImmediate(resolve)); w.expire();
-  assert.match((await first).error, /25秒/);
+  assert.match((await first).error, /超时/);
   const second = w.analyze(); await new Promise(resolve => setImmediate(resolve));
   assert.equal(w.requests.length, 2); w.expire(); assert.equal((await second).ok, false);
 });

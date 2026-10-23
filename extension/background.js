@@ -53,7 +53,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     // Reserve before the first await so cancellation and configuration changes
     // cover storage/permission preflight as well as the eventual fetch.
     const controller = new AbortController(); pending.set(key, controller);
-    const timer = setTimeout(() => controller.abort(), 25000);
+    let timer = setTimeout(() => controller.abort(), 25000);
     const checkCancelled = () => {
       if (controller.signal.aborted) { const error = new Error('Cancelled'); error.name = 'AbortError'; throw error; }
     };
@@ -88,11 +88,15 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           } });
         return { ok: true, ...analysis, model: 'mjai · 自选本地引擎', provider: 'mjai' };
       }
+      const outputOptions = MJModelEndpoint.outputOptions(c);
+      if (outputOptions.thinking?.type === 'enabled') {
+        clearTimeout(timer); timer = setTimeout(() => controller.abort(), 120000);
+      }
       const analysis = await MJAgent.run({ snapshot: message.snapshot, task, signal: controller.signal,
         explain: async (prepared, { signal }) => {
           const response = await fetch(url.href, { method: 'POST', signal, credentials: 'omit', redirect: 'error',
             headers: { 'Content-Type': 'application/json', ...(c.apiKey ? { Authorization: 'Bearer ' + c.apiKey } : {}) },
-            body: JSON.stringify({ model: c.model, stream: false, max_tokens: 3000, messages: [
+            body: JSON.stringify({ model: c.model, stream: false, ...outputOptions, messages: [
               { role: 'system', content: prepared.systemPrompt },
               { role: 'user', content: prepared.userPrompt }] }) });
           if (!response.ok) throw new Error('模型接口返回 HTTP ' + response.status + '，请检查地址、密钥、模型及额度。');
@@ -103,14 +107,21 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           const bytes = new Uint8Array(size); let offset = 0;
           for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
           let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('接口没有返回有效 JSON，请检查是否为 OpenAI 兼容接口。'); }
-          const content = data.choices?.[0]?.message?.content;
-          if (typeof content !== 'string' || !content.trim()) throw new Error('模型未返回文本内容，请检查模型是否支持 Chat Completions。');
+          const choice = data?.choices?.[0], content = choice?.message?.content;
+          if (choice?.finish_reason === 'length') throw new Error('模型输出达到长度上限，未完成分析。');
+          if (choice?.finish_reason === 'content_filter') throw new Error('模型输出被服务过滤，未完成分析。');
+          if (['insufficient_system_resource', 'aborted'].includes(choice?.finish_reason)) throw new Error('模型服务中断了生成，请稍后重试。');
+          if (typeof content !== 'string' || !content.trim()) {
+            if (typeof choice?.message?.reasoning_content === 'string' && choice.message.reasoning_content.trim()) throw new Error('模型仅返回思考内容，未生成最终分析。');
+            if (data?.error) throw new Error('模型接口返回错误，未提供有效分析，请检查服务状态与模型配置。');
+            throw new Error('模型响应正文为空或格式不兼容，未取得分析结果。');
+          }
           if (content.length > 32000) throw new Error('模型分析结果过长，请重试。');
           return content;
         } });
       return { ok: true, ...analysis, model: c.model };
     } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
-  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或超过25秒，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message) }));
+  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message) }));
   return true;
 });
 
