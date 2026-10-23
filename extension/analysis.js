@@ -13,7 +13,7 @@
     if (!['danger', 'efficiency', 'combined'].includes(value)) throw new Error('无效的分析任务。');
     return value;
   }
-  const textListSchema = { type: 'array', items: { type: 'string' }, maxItems: 32 };
+  const textListSchema = { type: 'array', items: { type: 'string', description: '直接展示给玩家的简短中文说明。理由说明具体牌理、进张或对手风险；限制说明实际缺失的信息。不得复述字段名、状态值、校验过程或“允许建议”等执行规则。' }, maxItems: 32 };
   const objectSchema = properties => ({ type: 'object', additionalProperties: false, required: Object.keys(properties), properties });
   const responseSchema = objectSchema({
     task: { type: 'string', enum: ['danger', 'efficiency', 'combined'] },
@@ -45,7 +45,7 @@
     const schema = JSON.parse(JSON.stringify(responseSchema)); schema.properties.task.enum = [task];
     schema.properties.danger.items.properties.opponents.maxItems = s.selfSeat === null ? s.playerCount : s.playerCount - 1;
     const modulePrompt = task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined : taskPrompts[task];
-    const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null，说明等待摸牌或数据缺失。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。', userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data) + '\n输出JSON Schema：\n' + JSON.stringify(schema), responseSchema: schema };
+    const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n内部校验规则（仅用于决定输出内容，不得写入理由）：只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。\n面向玩家的说明：decision.reasons第一条直接解释首选建议的牌理或攻守取舍，其余理由补充具体依据；不要用“满足条件”“允许建议具体弃牌”代替分析。所有reasons和limitations使用简短自然中文，不输出字段路径、布尔值、状态枚举或内部校验过程。仅说明实际影响判断的限制；无法建议弃牌时说“等待摸牌”或具体缺失的信息。不要把数据完整、校验通过当成限制。例如理由可写“保留两面搭子，优先打出孤张九万”，限制可写“尚未采集到对家的完整牌河，风险判断有限”；示例只说明表达方式，实际结论必须有当前数据支持。', userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data) + '\n输出JSON Schema：\n' + JSON.stringify(schema), responseSchema: schema };
     preparations.set(key, JSON.stringify(prepared));
     if (preparations.size > 8) preparations.delete(preparations.keys().next().value);
     return prepared;
