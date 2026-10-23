@@ -24,9 +24,13 @@ test('theme changes synchronize surfaces, survive reload and bind replacement co
   const f = fixture(), analysis = f.surface(), collector = f.surface();
   assert.equal(analysis.host.dataset.theme, 'dark');
   assert.equal(analysis.button['aria-label'], '切换到白天模式');
+  assert.match(analysis.button.innerHTML, /<svg[^>]+aria-hidden="true"/);
+  const moon = analysis.button.innerHTML;
   analysis.button.onclick();
   assert.equal(collector.host.dataset.theme, 'light');
-  assert.equal(collector.button.textContent, '黑夜');
+  assert.match(collector.button.innerHTML, /<circle/);
+  assert.notEqual(collector.button.innerHTML, moon);
+  assert.equal(collector.button.title, '切换到黑夜模式');
   assert.equal(f.store.get(key), 'light');
   const replacement = { setAttribute(k, v) { this[k] = v; } };
   collector.theme.bind(replacement);
