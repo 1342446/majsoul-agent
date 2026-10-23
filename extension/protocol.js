@@ -127,8 +127,25 @@
     } else if (kind === 'Hule') {
       Object.assign(e, { scores: nums(f, 5), oldScores: nums(f, 2), deltas: nums(f, 3), doras: tiles(f, 7),
         gameEnded: !!blob(f, 6)?.length,
-        winners: blobs(f, 1).map(b => { const h = wire(b); return { seat: num(h, 4), tile: tile(str(h, 3)),
-          tsumo: !!num(h, 5), han: num(h, 11), fu: num(h, 13) }; }) });
+        winners: blobs(f, 1).map(b => {
+          const h = wire(b);
+          const winner = { seat: num(h, 4), tile: tile(str(h, 3)),
+            tsumo: !!num(h, 5), han: num(h, 11), fu: num(h, 13) };
+          // lq.RecordHule uses HuleInfo, not the unrelated RecordHuleInfo.
+          // Fan names are yaku labels only; no player/account fields are selected.
+          if (replay) Object.assign(winner, {
+            fans: blobs(h, 12).map(v => {
+              const fan = wire(v), name = str(fan, 1);
+              return { id: num(fan, 3, null), value: num(fan, 2, null), name: name && name.length <= 80 ? name : null };
+            }),
+            uraDoras: tiles(h, 9), yakuman: !!num(h, 10), dealer: !!num(h, 6),
+            pointRon: num(h, 15, null), pointTsumoDealer: num(h, 16, null),
+            pointTsumoNonDealer: num(h, 17, null), pointSum: num(h, 19, null),
+            responsibility: { value: num(h, 21, null), seats: nums(h, 22) }
+          });
+          return winner;
+        }) });
+      if (replay) e.responsibility = num(f, 9, null);
     } else if (kind === 'NoTile') {
       const list = blobs(f, 3).map(b => wire(b));
       const old = list.length ? nums(list[0], 2) : [];
@@ -136,14 +153,26 @@
       if (old.length && changes.every(ds => ds.length === old.length)) e.scores = old.map((v, i) => v + changes.reduce((sum, ds) => sum + ds[i], 0));
       e.gameEnded = !!num(f, 4); e.nagashi = !!num(f, 1);
       e.tenpai = blobs(f, 2).map(b => !!num(wire(b), 3));
+      if (replay) {
+        e.scoreSettlements = list.map(o => ({ seat: num(o, 1), oldScores: nums(o, 2), deltas: nums(o, 3) }));
+        e.oldScores = old;
+        e.deltas = old.length && changes.every(ds => ds.length === old.length)
+          ? old.map((_, i) => changes.reduce((sum, ds) => sum + ds[i], 0)) : [];
+        e.settlementUnknown = !old.length || list.some(o => {
+          const scores = nums(o, 2);
+          return scores.length !== old.length || scores.some((score, i) => score !== old[i]);
+        }) || changes.some(ds => ds.length !== old.length);
+        e.hasHuleHistory = blobs(f, 9).length > 0;
+      }
     } else if (kind === 'LiuJu') {
       e.reason = num(f, 1); e.riichiSuccess = success(f);
       const end = blob(f, 2); e.gameEnded = !!end?.length;
       if (end?.length) e.scores = nums(wire(end), 1);
+      if (replay) { e.seat = num(f, 3, null); e.hasHuleHistory = blobs(f, 9).length > 0; }
     }
     else if (kind === 'MJStart') return e;
     else return { kind: 'Unsupported', source, name: String(name).slice(0, 100) };
-    if ('seat' in e && (e.seat < 0 || e.seat > 3)) throw new Error('无效座位');
+    if ('seat' in e && e.seat !== null && (e.seat < 0 || e.seat > 3)) throw new Error('无效座位');
     return e;
   }
   function action(input) {

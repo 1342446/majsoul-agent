@@ -7,7 +7,8 @@
     {
       "resources": [
         "tiles/*.svg",
-        "analysis-panel.css"
+        "analysis-panel.css",
+        "naga-panel.css"
       ],
       "matches": [
         "https://game.maj-soul.com/*"
@@ -38,12 +39,14 @@
         "contracts/snapshot.js",
         "collector/snapshot-adapter.js",
         "adapters/mjai.js",
+        "adapters/naga-replay.js",
         "mahjong-analysis.js",
         "analysis.js",
         "analysis-panel.js",
         "overlay.js",
         "floating-panel.js",
         "hand-hints.js",
+        "naga-panel.js",
         "apps/agent-app.js"
       ],
       "run_at": "document_start",

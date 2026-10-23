@@ -36,13 +36,21 @@
           mode: view.historical ? 'history' : view.mode, historyView: view.historyView,
           cursor: !view.historical && view.mode === 'replay' ? view.cursor : null
         }, render, hintHooks);
+        const replaySlot = document.createElement('div');
+        replaySlot.dataset.nagaSlot = '';
+        container.appendChild(replaySlot);
+        root.MJNagaPanel.mount(replaySlot, {
+          mode: view.historical ? 'history' : view.mode,
+          recordCount: view.recordCount, replayRevision: view.replayRevision,
+          exportReplay: () => controller.exportData()
+        }, render);
       }
     });
     panel.mount(); analysis.mount();
     // The analysis renderer invalidates stale hints synchronously with each state change.
     const unsubscribe = controller.subscribe(() => analysis.render());
     const disconnect = ports.connect(controller);
-    return { controller, panel, analysis, hints, destroy() { disconnect(); unsubscribe(); root.MJAnalysisPanel.destroy?.(); hints.destroy(); analysis.destroy(); panel.destroy(); } };
+    return { controller, panel, analysis, hints, destroy() { disconnect(); unsubscribe(); root.MJAnalysisPanel.destroy?.(); root.MJNagaPanel.destroy(); hints.destroy(); analysis.destroy(); panel.destroy(); } };
   }
   root.MJAgentApp = { start };
   if (typeof document !== 'undefined') {

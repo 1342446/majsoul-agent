@@ -32,6 +32,8 @@
 | `extension/agent.js` | 任务计划、已授权快照、本地分析和模型解释工具接线 | 后台 / Node |
 | `extension/adapters/mjai.js` | 授权事件前缀转 mjai、匿名化、对手暗牌遮蔽及协议白名单 | 纯输入适配 / Node |
 | `extension/contracts/engine-result.js` / `engine-agent.js` | 可选引擎输出白名单、快照与事件重放对照、合法动作验证和有界流程 | 后台 / Node |
+| `extension/adapters/naga-replay.js` | 完整 replay 到逐局 Tenhou URL 的纯转换、规则与动作校验、逐局拒绝 | 纯输入适配 / Node |
+| `extension/naga-panel.js` / `.css` | 默认关闭的规则确认、选局、预览、复制／下载及官方提交页链接 | Agent ISOLATED 世界 |
 | `extension/harness.js` | 工具注册、步数与时间预算、取消、无内容运行轨迹 | 后台 / Node |
 | `extension/collector-background.js` | 独立获取器的历史存储后台，无模型功能 | Collector Service Worker |
 | `agent/review.cjs` / `agent/eval.cjs` | 按游标的本地复盘、人工回归报告 | Node CLI |
@@ -88,6 +90,14 @@ LLM 分析与解释保持主要定位，默认 `chat` 且分析关闭。设置�
 扩展经带 Bearer Token 的本机 `/analyze` 调用 `engine-server.cjs`，后者由 `mjai-process.cjs` 启动用户配置的进程，写入一行完整事件数组，读取单行动作并清理进程。Python 包装器调用用户零参数 Bot 类的 `react(events_json)`，用户模块自行加载权重和依赖。命令不是沙箱；不捆绑上游运行环境或权重，上游许可另行适用。此服务默认不启动，不接受由页面指定执行命令。
 
 页面初版仅接受完整无副露四麻的合法 `dahai`、`reach` 意向及 `none`，自家14张开局记录和其他动作明确拒绝。无法确定立直弃牌时不输出具体牌；无可靠 Q 索引映射时候选为空，Q 值不作为放铳概率或危险牌依据。`engine:review` 从事件前缀重建快照，复用同一 Agent 的完整一致性与动作校验，输出 `engine/result/localAnalysis/trace`。HTTP 服务全局只运行一次推理，忙时429且不排队，断开后等待取消清理完成才释放。完整协议与命令见 [docs/MJAI.md](docs/MJAI.md)。真实模型权重及牌力未验证。
+
+## 可选 NAGA 牌谱导出
+
+`naga-panel.js` 由完整版组合入口挂载，默认关闭且独立于 `chat` / `mjai` 后端选择。用户在 replay 模式主动确认四人喰断、东风／半庄和赤牌配置后，面板通过注入的 `exportReplay()` 端口取得完整记录，交给纯转换器 `adapters/naga-replay.js`。转换不依赖当前游标，不接受实时局面或历史快照；输出逐局 Tenhou URL 与逐局拒绝原因。支持与拒绝边界见 [NAGA 接入说明](docs/NAGA-INTEGRATION.md)。
+
+`protocol.js` 仅对 replay 选择额外的役种、里宝牌、支付点数与流局结算字段，缺失点数保持 `null`；不保留玩家身份、未来牌山或原始报文，也不扩大 live 输出。转换器自行匿名化座位标签，不依赖 DOM、Chrome、网络、模型 Agent 或 harness。新增数据不会进入 `mj-analysis-v1`。
+
+面板仅生成预览、复制或下载文本，并打开固定官方链接；用户自行登录、核对官方费用和提交。扩展不读取会话、不自动上传或扣费、不轮询任务或回读报告，也不把报告贴到实时手牌。Collector 的资源闭包不含 NAGA 转换器及界面，无新增服务主机权限。
 
 ## 历史记录边界
 

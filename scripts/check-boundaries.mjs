@@ -8,6 +8,7 @@ export const providers = {
   MJSnapshotContract: 'contracts/snapshot.js', MJCollectorSnapshot: 'collector/snapshot-adapter.js',
   MJModelEndpoint: 'adapters/model-endpoint.js', MJAnalysis: 'analysis.js', MJHarness: 'harness.js', MJAgent: 'agent.js',
   MJMjaiAdapter: 'adapters/mjai.js', MJEngineEndpoint: 'adapters/engine-endpoint.js',
+  MJNagaReplay: 'adapters/naga-replay.js', MJNagaPanel: 'naga-panel.js',
   MJEngineAgent: 'engine-agent.js', MJEngineResult: 'contracts/engine-result.js',
   MJAnalysisPanel: 'analysis-panel.js', MJFloatingPanel: 'floating-panel.js', MJHandHints: 'hand-hints.js', MJCollectorController: 'collector/controller.js',
   MJCollectorBrowser: 'collector/browser-adapter.js', MJCollectorPanel: 'overlay.js', MJCollectorApp: 'apps/collector-app.js', MJAgentApp: 'apps/agent-app.js'
@@ -102,22 +103,22 @@ export function workerImports(source) {
 }
 export function checkSourceBoundary(file, source) {
   const deps = dependencies(file, source), ids = tokens(source).filter(t => t.type === 'id').map(t => t.value);
-  if (file.startsWith('collector/') && deps.some(dep => ['analysis.js', 'analysis-panel.js', 'hand-hints.js', 'agent.js', 'engine-agent.js', 'harness.js', 'adapters/model-endpoint.js', 'adapters/mjai.js', 'adapters/engine-endpoint.js', 'contracts/engine-result.js', 'mahjong-analysis.js'].includes(dep))) throw new Error(`${file}: collector must not depend on analysis/model layers`);
+  if (file.startsWith('collector/') && deps.some(dep => ['analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'agent.js', 'engine-agent.js', 'harness.js', 'adapters/model-endpoint.js', 'adapters/mjai.js', 'adapters/engine-endpoint.js', 'contracts/engine-result.js', 'mahjong-analysis.js'].includes(dep))) throw new Error(`${file}: collector must not depend on analysis/model layers`);
   let allowed = null, pure = false;
   if (file.startsWith('contracts/')) { allowed = new Set(); pure = true; }
   else if (file === 'harness.js') { allowed = new Set(); pure = true; }
   else if (file === 'agent.js') { allowed = new Set(['analysis.js', 'mahjong-analysis.js', 'harness.js', 'contracts/snapshot.js']); pure = true; }
   else if (file === 'engine-agent.js') { allowed = new Set(['harness.js', 'contracts/snapshot.js', 'contracts/engine-result.js', 'mahjong-analysis.js', 'adapters/mjai.js']); pure = true; }
-  else if (file === 'adapters/mjai.js') { allowed = new Set(); pure = true; }
+  else if (file === 'adapters/mjai.js' || file === 'adapters/naga-replay.js') { allowed = new Set(); pure = true; }
   else if (file === 'analysis.js' || file === 'mahjong-analysis.js') { allowed = new Set(['contracts/snapshot.js', 'mahjong-analysis.js']); pure = true; }
   else if (file === 'state.js' || file === 'history.js' || file === 'collector/controller.js' || file === 'collector/snapshot-adapter.js' || file.startsWith('collector/core/')) {
     allowed = new Set(['state.js', 'history.js', 'contracts/snapshot.js']); pure = true;
   }
-  else if (['overlay.js', 'analysis-panel.js', 'floating-panel.js', 'hand-hints.js'].includes(file)) {
+  else if (['overlay.js', 'analysis-panel.js', 'naga-panel.js', 'floating-panel.js', 'hand-hints.js'].includes(file)) {
     const ts = tokens(source);
     for (let i = 0; i < ts.length; i++) if (['root', 'globalThis', 'window'].includes(ts[i].value) && ts[i+1]?.value === '[' && ts[i+2]?.type !== 'string') throw new Error(`${file}: dynamic UI global access is forbidden`);
     if (deps.includes('agent.js') || deps.includes('engine-agent.js')) throw new Error(`${file}: UI must not depend on Agent`);
-    if (file === 'overlay.js' && deps.some(d => ['analysis.js', 'analysis-panel.js', 'hand-hints.js', 'adapters/model-endpoint.js'].includes(d))) throw new Error(`${file}: collector UI must not depend on analysis`);
+    if (file === 'overlay.js' && deps.some(d => ['analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'adapters/model-endpoint.js'].includes(d))) throw new Error(`${file}: collector UI must not depend on analysis`);
     if (file === 'floating-panel.js' || file === 'hand-hints.js') allowed = new Set();
   }
   if (allowed) for (const dependency of deps) if (!allowed.has(dependency)) throw new Error(`${file}: forbidden dependency ${dependency}`);

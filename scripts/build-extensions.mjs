@@ -64,7 +64,7 @@ export function checkProfiles(source = join(root, 'extension')) {
   for (const profile of profiles) {
     if (profile.manifest.version !== version) throw new Error('Profile version differs: ' + profile.name);
     profile.files = validateProfile(source, profile.manifest);
-    if (profile.name === 'collector' && profile.files.some(file => /^(?:analysis(?:-panel)?\.(?:js|css)|hand-hints\.js|mahjong-analysis\.js|agent\.js|engine-agent\.js|harness\.js|adapters\/(?:model-endpoint|engine-endpoint|mjai)\.js|contracts\/engine-result\.js|options\.)/.test(file))) throw new Error('Collector dependency closure contains analysis/model files');
+    if (profile.name === 'collector' && profile.files.some(file => /^(?:analysis(?:-panel)?\.(?:js|css)|naga-panel\.(?:js|css)|hand-hints\.js|mahjong-analysis\.js|agent\.js|engine-agent\.js|harness\.js|adapters\/(?:model-endpoint|engine-endpoint|mjai|naga-replay)\.js|contracts\/engine-result\.js|options\.)/.test(file))) throw new Error('Collector dependency closure contains analysis/model files');
   }
   return profiles;
 }

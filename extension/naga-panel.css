@@ -1,0 +1,21 @@
+.naga-panel{box-sizing:border-box;background:#20272d;color:#f0f2f1;font:12px/1.5 system-ui,sans-serif;border-top:1px solid #46515a;padding:9px 12px;color-scheme:dark;overflow-wrap:anywhere}
+.naga-panel *{box-sizing:border-box}
+.naga-panel summary{cursor:pointer;color:#8bd4d1;list-style-position:inside}
+.naga-panel summary span{float:right;color:#b5bfc5;font-size:11px}
+.naga-panel label{display:block;margin:8px 0}
+.naga-panel input[type=checkbox]{accent-color:#8bd4d1;vertical-align:middle;margin:0 6px 0 0}
+.naga-panel p{margin:6px 0}
+.naga-panel .naga-muted{color:#b5bfc5}
+.naga-panel .naga-warn{color:#ef9b8f}
+.naga-panel select,.naga-panel textarea,.naga-panel button{font:inherit;color:inherit;border:1px solid #46515a;border-radius:6px;background:#2b343b;padding:6px 8px;max-width:100%}
+.naga-panel select{display:block;width:100%;margin-top:3px}
+.naga-panel textarea{display:block;width:100%;resize:vertical;font:11px/1.5 ui-monospace,monospace;margin-top:4px;min-height:90px}
+.naga-panel button{cursor:pointer}
+.naga-panel button:disabled{opacity:.45;cursor:default}
+.naga-panel :is(button,a,select,textarea,input,summary):focus-visible{outline:2px solid #8bd4d1;outline-offset:3px}
+.naga-panel #naga-generate{border-color:#8bd4d1;color:#8bd4d1;width:100%}
+.naga-panel .naga-rounds{margin:10px 0;padding:4px 9px;border:1px solid #46515a;border-radius:6px;max-height:160px;overflow:auto}
+.naga-panel .naga-rounds label{margin:5px 0}
+.naga-panel .naga-actions{display:flex;gap:7px;flex-wrap:wrap}
+.naga-panel .naga-official{color:#8bd4d1;display:inline-block;margin-top:9px;text-underline-offset:3px}
+@media(min-width:460px){.naga-panel .naga-rules{display:grid;grid-template-columns:1fr 1fr;gap:0 9px}.naga-panel .naga-rules label:last-child{grid-column:1/-1}}

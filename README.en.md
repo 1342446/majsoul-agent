@@ -101,6 +101,12 @@ npm run engine:review -- observation.json --config runtime.json --seat 0 --hand 
 
 `runtime.json` names a trusted local program. Its JSONL protocol receives one complete event array and returns one action line. A Python `Bot.react` wrapper is provided, but your module must initialize the bot and load your weights; an arbitrary upstream `bot.py` is not automatically compatible. Configured commands are not sandboxed, and upstream licenses apply separately. Select `mjai` in settings and enter the local `/analyze` URL and Bearer token. The browser Agent currently accepts only complete four-player rounds without melds, with validated discards, riichi intent, or pass actions; an own-hand 14-tile opening record is rejected. Q values are not deal-in probabilities. There is no automatic play or validation with real model weights. See the [setup, configuration, and limits](docs/MJAI.md) (Chinese).
 
+## Optional NAGA replay export
+
+The full edition's `牌谱复盘 · NAGA` panel is disabled by default. Open a complete replay, enable it, explicitly select East-only / South game, one red five per suit / no red fives, and four-player open tanyao rules, then confirm generation. Conversion reads the entire replay locally, independently of the cursor. Select hands, preview, copy, or download one `Tenhou URL` per hand, then sign in and submit yourself on the [official NAGA page](https://naga.dmv.nico/naga_report/order_form/). Exports include all four hands and replace player names with seat labels.
+
+The first version supports standard four-player calls, kans, riichi, single-winner hands, and ordinary exhaustive draws. Multiple winners, responsibility payments, nagashi mangan, abortive draws, three-player games, unknown yaku, and missing data are rejected per hand. See [NAGA integration](docs/NAGA-INTEGRATION.md) for exact limits. The extension does not automatically upload, charge, read reports, or collect account credentials. Official prices and acceptance are determined on the official site. The collector-only edition contains no NAGA modules.
+
 ## History and replays
 
 Hand results show tsumo, ron, exhaustive draws, or abortive draws, along with scores and net changes from the start of the hand, including riichi payments. Missing final scores remain unknown and may be completed when the next hand begins.

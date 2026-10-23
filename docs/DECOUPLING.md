@@ -14,6 +14,12 @@
 
 本地预览的分析面板会使用 `MJAnalysis.prepare`，因此 Agent content scripts 明确加载合同、本地算法和分析模块；Agent 执行器仍只由后台加载。Collector 的资源闭包不含分析模块、模型地址适配器和设置页。
 
+## NAGA 的独立牌谱边界
+
+`adapters/naga-replay.js` 仅接受完整牌谱导出与显式规则，返回逐局 Tenhou URL、匿名牌局 JSON 和逐局拒绝原因。它不调用 DOM、Chrome、网络、模型、引擎或 harness，不复用实时分析快照补造整局。`protocol.js` 新增结算字段只用于 replay，标准 LLM 合同不扩张。
+
+完整版组合入口向 `naga-panel.js` 注入完整 replay 导出端口。面板默认关闭，负责规则确认、选局、只读预览、复制、下载和固定官方链接；不包含账号、自动提交、扣费或报告处理。NAGA 不是 `chat` / `mjai` 的实时推理 provider。Collector 入口与构建资源闭包不包含 NAGA 模块，也不增加服务权限。
+
 ## 构建与验证
 
 运行 `npm run check`、`npm test`、`npm run build`。检查递归覆盖 `extension` 子目录。公开源码包按既有顶层白名单递归收录新增模块，拒绝其中嵌套的 `.git`、`research`、`node_modules` 和 `dist`。

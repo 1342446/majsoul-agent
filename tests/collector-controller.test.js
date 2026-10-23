@@ -8,6 +8,18 @@ const make = options => C.create({ state: S, history: H, clock: () => 1700000000
 const send = (c, event) => c.receive({ type: 'event', payload: event });
 const end = c => send(c, { source: 'live', kind: 'NoTile', step: 1, scores: [25000,25000,25000,25000] });
 
+test('replay revision tracks replacement even at identical lengths, independently of cursor', async () => {
+  const c = make();
+  assert.equal(c.getView().replayRevision, 0);
+  const load = round => c.receive({ type: 'replay', payload: { records: [opening('replay', { round })] } });
+  load(0); assert.equal(c.getView().replayRevision, 1);
+  c.setCursor(0); c.setCursor(1); c.setMode('live'); c.setMode('replay');
+  assert.equal(c.getView().replayRevision, 1);
+  load(1); assert.equal(c.getView().replayRevision, 2);
+  assert.equal(c.getView().recordCount, 1);
+  await c.flush();
+});
+
 test('pure controller keeps live and replay state independent and cursor excludes future draws', async () => {
   const c = make();
   send(c, opening()); c.setSelfSeat(1);

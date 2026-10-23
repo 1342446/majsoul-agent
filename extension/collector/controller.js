@@ -9,7 +9,7 @@
   const hash = options.hash || (async () => id());
   const listeners = new Set();
   let mode = 'live', live = S.initial(), replayState = S.initial('replay');
-  let records = [], cursor = 0, replaySelfSeat = null, log = [], diagnostics = [], stats = {}, connections = new Map();
+  let records = [], cursor = 0, replayRevision = 0, replaySelfSeat = null, log = [], diagnostics = [], stats = {}, connections = new Map();
   let historyMatches = [], liveMatch = null, historyMatchId = '', historyView = null, historyWarning = '', historyReady = false;
   const historyDirty = new Map();
   let writeQueue = Promise.resolve();
@@ -78,7 +78,7 @@
   function getView() {
     const historical = viewedState();
     const recentEvents = historical ? [] : mode === 'live' ? log.slice(-12).reverse() : records.slice(Math.max(0, cursor - 8), cursor).reverse();
-    return clone({ mode, live, replayState, recordCount: records.length, recentEvents, cursor, diagnostics, stats,
+    return clone({ mode, live, replayState, recordCount: records.length, replayRevision, recentEvents, cursor, diagnostics, stats,
       connections: [...connections], historyMatches, historyMatchId, historyView, historyWarning,
       historyReady, historical, state: historical || (mode === 'live' ? live : replayState) });
   }
@@ -98,6 +98,7 @@
       } else if (m.type === 'replay' && Array.isArray(m.payload?.records) && m.payload.records.length <= 25000) {
         replaySelfSeat = null;
         records = S.withSeatWinds(m.payload.records); cursor = records.findIndex(e => e.kind === 'NewRound') + 1;
+        replayRevision++;
         mode = 'replay'; historyView = null; recalculate(); replayTask = recordReplay(records);
       } else if (m.type === 'status') stats = m.payload || {};
       else if (m.type === 'diagnostic') {

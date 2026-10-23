@@ -39,14 +39,16 @@ test('collector composition mounts without loading any model capability', () => 
 });
 test('agent composition keeps collection, floating analysis and hand hints on independent surfaces', () => {
   const { window } = surface(); let configured, floating, mounted, opens = [], hints = [], renders = 0;
-  const draw = () => { renders++; floating.onRender({}, draw); };
+  let naga;
+  const draw = () => { renders++; floating.onRender({ appendChild() {} }, draw); };
   const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
-    MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null },
+    MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null, createElement: () => ({ dataset: {} }) },
     MJCollectorPanel: { create(options) { configured = options; return { mount() {}, open(value) { opens.push(value); }, destroy() {} }; } },
     MJFloatingPanel: { create(options) { floating = options; return { mount: draw, render: draw, destroy() {} }; } },
     MJHandHints: { create() { return { update(value) { hints.push(value); }, getCalibrationState: () => ({ available: true, calibrated: false }), startCalibration() {}, destroy() {} }; } },
     MJCollectorSnapshot: { snapshot(state, selection) { return { phase: state.phase, selected: selection.game }; } },
-    MJAnalysisPanel: { mount(...args) { mounted = args; } } };
+    MJAnalysisPanel: { mount(...args) { mounted = args; } },
+    MJNagaPanel: { mount(container, options) { naga = options; } } };
   vm.runInNewContext(read('collector/controller.js'), context);
   vm.runInNewContext(read('collector/browser-adapter.js'), context);
   vm.runInNewContext(read('apps/agent-app.js'), context);
@@ -60,6 +62,10 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   mounted[4].onHints({ hand: ['1m'] }); assert.equal(hints[0].hand[0], '1m');
   const before = renders; configured.controller.receive({ type: 'status', payload: { gameEvents: 1 } });
   assert.equal(renders, before + 1);
+  assert.equal(naga.mode, 'live'); assert.equal(naga.recordCount, 0); assert.equal(naga.replayRevision, 0);
+  // Full replay data is only pulled by an explicit export command, never by rendering.
+  assert.equal(typeof naga.exportReplay, 'function');
+  assert.equal(naga.exportReplay().format, 'mj-observer-v1');
 });
 test('presentation module loads with no DOM and never mounts automatically', () => {
   const context = {}; vm.runInNewContext(read('overlay.js'), context);

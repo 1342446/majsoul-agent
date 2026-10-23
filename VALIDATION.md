@@ -1,5 +1,14 @@
 # 版本验证记录
 
+## 可选 NAGA 牌谱导出（2026-10-23，未发布）
+
+- 协议定向回归 `node --test tests/protocol.test.js tests/naga-protocol.test.js`：16/16通过。人工 protobuf 覆盖役种标签限长、里宝牌、支付点数缺失为 `null`、役满／包牌标志、多和牌不伪造逐赢家分差、荒牌流局结算证据、特殊流局标志、隐私字段过滤、live 输出保持及 LLM snapshot 隔离。
+- `npm test`：224/224通过；`npm run check`、`npm run build`及`git diff --check`通过。转换器19项人工回归覆盖从protobuf牌谱解码到Tenhou输出、吃碰明暗加杠、立直成立与里宝牌、普通荒牌流局、本场与供托结算交叉验证、未知役种及信息不足拒绝；面板覆盖默认关闭、规则确认、复制失败降级及异步生命周期。相同记录数的新牌谱会撤销导出，移动游标不复制全量牌谱。
+- 首版默认关闭，只在完整 replay 中提供本地逐局转换、规则确认、选局预览、复制／下载及固定官方链接。支持标准四麻明确规则下的单家和牌和普通荒牌流局，不支持的局单独拒绝；范围见 [docs/NAGA-INTEGRATION.md](docs/NAGA-INTEGRATION.md)。
+- 实际Edge 155.0.4283.62与Chrome 156.0.8078.47在临时配置中加载完整版，使用游戏域路由替换的人工页面与人工牌谱：默认关闭、规则确认、本地转换及下载内容、游标移动保留导出、同长度换谱撤销导出、320×240视窗均通过。真实扩展后台使用模拟权限与引擎响应，mjai建议显示为9筒牌面，无未捕获页面异常；NAGA转换未产生外站请求。忽略目录证据：`research/current-web/naga-extension-smoke.cjs`与`naga-{edge,chrome}-results.json`。
+- 两浏览器再次加载Agent／Collector，回归默认收起获取器、Canvas全屏、LLM模拟后台链路、校准手牌标记、过期清除与窄屏，均通过。没有连接雀魂账号、真实模型权重或NAGA账号；没有真实雀魂整场或NAGA官方提交受理证据，没有自动上传、扣费或回读报告。本地人工验证不能称为官方兼容或已完成服务分析。
+- Mortal/mjai 提交 `adeed4f` 已在 `main`，无需重复合并；该路径仍无真实 Mortal/Akagi 权重加载或牌力验证。
+
 ## 可选 mjai 适配（2026-10-23，未发布）
 
 - 全仓库验证 `npm test`：193/193通过；`npm run check`、`npm run build` 与 `git diff --check` 通过。
