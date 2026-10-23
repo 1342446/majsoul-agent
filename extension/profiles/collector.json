@@ -34,6 +34,7 @@
         "history.js",
         "collector/controller.js",
         "collector/browser-adapter.js",
+        "panel-theme.js",
         "overlay.js",
         "apps/collector-app.js"
       ],

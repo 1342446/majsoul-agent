@@ -33,20 +33,24 @@
     function mount(container = document.documentElement) {
       if (host || document.getElementById(options.id)) return;
       host = document.createElement('div'); host.id = options.id;
+      const theme = root.MJPanelTheme.attach(host);
+      cleanup.push(() => theme.destroy());
       Object.assign(host.style, { position: 'fixed', inset: 'auto', right: '18px', top: '18px', width: 'min(352px, calc(100vw - 16px))', zIndex: '2147483646', margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible', visibility: 'hidden' });
       shadow = host.attachShadow({ mode: 'open' });
       shadow.innerHTML = `<style>
-        :host{all:initial;font:13px/1.6 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:#f0f2f1}:host::backdrop{background:transparent;pointer-events:none}
-        *{box-sizing:border-box}.card{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);background:#20272d;border:1px solid #46515a;border-radius:8px;box-shadow:0 8px 30px #0006;overflow:hidden}
-        .card>header{display:flex;flex:none;gap:12px;align-items:center;padding:11px 15px 9px;cursor:grab;touch-action:none;user-select:none;border-bottom:1px solid #46515a}
+        :host{all:initial;font:13px/1.6 "Microsoft YaHei UI","Microsoft YaHei",sans-serif;color:var(--mj-text, #f0f2f1)}:host::backdrop{background:transparent;pointer-events:none}
+        *{box-sizing:border-box}.card{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);background:var(--mj-bg, #20272d);border:1px solid var(--mj-border, #46515a);border-radius:8px;box-shadow:0 8px 30px #0006;overflow:hidden}
+        .card>header{display:flex;flex:none;gap:12px;align-items:center;padding:11px 15px 9px;cursor:grab;touch-action:none;user-select:none;border-bottom:1px solid var(--mj-border, #46515a)}
         :host([data-dragging]) .card>header{cursor:grabbing}.card>header strong{flex:1;font:600 14px/1.5 "Segoe UI","Microsoft YaHei UI",sans-serif}
-        .card>header button{font:12px/1.5 "Microsoft YaHei UI",sans-serif;color:#b5bfc5;background:none;border:0;padding:3px;cursor:pointer}.card>header button:hover{color:#f0f2f1}button:focus-visible{outline:2px solid #8bd4d1;outline-offset:2px}
+        .card>header button{font:12px/1.5 "Microsoft YaHei UI",sans-serif;color:var(--mj-muted, #b5bfc5);background:none;border:0;padding:3px;cursor:pointer}.card>header button:hover{color:var(--mj-text, #f0f2f1)}button:focus-visible{outline:2px solid var(--mj-accent, #8bd4d1);outline-offset:2px}
         .body{min-height:0;overflow:auto;overscroll-behavior:contain}.body[hidden]{display:none}
-      </style><section class="card"><header title="拖动标题栏移动分析卡"><strong></strong><button type="button" aria-expanded="true">收起</button></header><div class="body"></div></section>`;
+        ${root.MJPanelTheme.css}
+      </style><section class="card"><header title="拖动标题栏移动分析卡"><strong></strong><button type="button" data-theme-toggle></button><button type="button" aria-expanded="true">收起</button></header><div class="body"></div></section>`;
       shadow.querySelector('strong').textContent = options.title;
       shadow.querySelector('section').setAttribute('aria-label', options.title);
       body = shadow.querySelector('.body');
-      const grip = shadow.querySelector('header'), toggle = shadow.querySelector('button');
+      theme.bind(shadow.querySelector('[data-theme-toggle]'));
+      const grip = shadow.querySelector('header'), toggle = shadow.querySelector('[aria-expanded]');
       toggle.onclick = () => {
         collapsed = !collapsed; body.hidden = collapsed;
         toggle.textContent = collapsed ? '展开' : '收起'; toggle.setAttribute('aria-expanded', String(!collapsed));

@@ -43,6 +43,7 @@
         "mahjong-analysis.js",
         "analysis.js",
         "analysis-panel.js",
+        "panel-theme.js",
         "overlay.js",
         "floating-panel.js",
         "hand-hints.js",

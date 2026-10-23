@@ -16,7 +16,7 @@ function fixture({ cached = false } = {}) {
   }
   const links = [element(), element()];
   links.forEach(link => { link.sheet = cached ? {} : null; });
-  const nodes = Object.fromEntries(['strong', 'section', '.body', 'header', 'button'].map(key => [key, element()]));
+  const nodes = Object.fromEntries(['strong', 'section', '.body', 'header', '[data-theme-toggle]', '[aria-expanded]'].map(key => [key, element()]));
   const shadow = { innerHTML: '', querySelector: key => nodes[key], querySelectorAll: () => links };
   const hosts = [], reveals = [];
   let rectReads = 0, resize;
@@ -33,6 +33,7 @@ function fixture({ cached = false } = {}) {
     window: { addEventListener() {}, removeEventListener() {} },
     ResizeObserver: class { constructor(fn) { resize = fn; } observe() {} disconnect() {} }
   };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../extension/panel-theme.js'), 'utf8'), context);
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/floating-panel.js'), 'utf8'), context);
   let renders = 0;
   const panel = context.MJFloatingPanel.create({ id: 'test-panel', title: 'Test', positionKey: 'test-position', onRender() { renders++; } });

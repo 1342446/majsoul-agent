@@ -3,7 +3,7 @@
   function create(options) {
   const { controller } = options;
   const S = root.__MJ_OBSERVER_STATE_V1__;
-  let host, shadow, collapsed = options.collapsed !== false;
+  let host, shadow, theme, collapsed = options.collapsed !== false;
   const detailsState = new Map();
   const cleanup = [];
   let currentView, mode, live, replayState, recordCount, recentEvents, cursor, diagnostics, stats, connections, historyMatches, historyMatchId, historyView, historyWarning;
@@ -138,20 +138,21 @@
     setTimeout(() => URL.revokeObjectURL(url), 1000);
   }
   const css = `
-    :host{all:initial;color:#f0f2f1;font:13px/1.5 "Microsoft YaHei UI","Microsoft YaHei",sans-serif}:host::backdrop{background:transparent;pointer-events:none}
+    :host{all:initial;color:var(--mj-text, #f0f2f1);font:13px/1.5 "Microsoft YaHei UI","Microsoft YaHei",sans-serif}:host::backdrop{background:transparent;pointer-events:none}
     *{box-sizing:border-box}button,select,input{font:inherit}button,select{cursor:pointer}
-    button{background:#2b343b;border:1px solid #46515a;color:#f0f2f1;border-radius:5px;padding:5px 9px}
-    button:hover{background:#3a454e}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid #8bd4d1;outline-offset:2px}
-    button:disabled{cursor:default;opacity:.45}.shell{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);width:min(430px,calc(100vw - 24px));background:#20272d;border:1px solid #46515a;border-radius:9px;box-shadow:0 8px 28px #0004;overflow:hidden}
-    header{display:flex;flex:none;align-items:center;gap:10px;background:#2b343b;color:#f0f2f1;padding:10px 12px;cursor:grab;user-select:none;touch-action:none}:host([data-dragging]) header{cursor:grabbing}header strong{font-size:14px;flex:1}header button{padding:2px 8px;color:#fff;background:transparent;border-color:#46515a}
-    .body{padding:12px;min-height:0;overflow:auto}.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.controls select{padding:5px;color:#f0f2f1;background:#20272d;border:1px solid #46515a;border-radius:5px;max-width:100%}
-    .status{margin:10px 0;padding:8px 10px;background:#2b343b;border-left:3px solid #8bd4d1}.status.bad{background:#3b3028;border-color:#ef9b8f}
-    .muted{color:#b5bfc5}.meta{display:flex;gap:12px;flex-wrap:wrap}.round{font-size:21px;font-weight:700;color:#f0f2f1}.meta span{white-space:nowrap}
+    button{background:var(--mj-surface, #2b343b);border:1px solid var(--mj-border, #46515a);color:var(--mj-text, #f0f2f1);border-radius:5px;padding:5px 9px}
+    button:hover{background:var(--mj-hover, #3a454e)}button:focus-visible,select:focus-visible,input:focus-visible,summary:focus-visible{outline:3px solid var(--mj-accent, #8bd4d1);outline-offset:2px}
+    button:disabled{cursor:default;opacity:.45}.shell{display:flex;flex-direction:column;max-height:calc(100dvh - 16px);width:min(430px,calc(100vw - 24px));background:var(--mj-bg, #20272d);border:1px solid var(--mj-border, #46515a);border-radius:9px;box-shadow:0 8px 28px #0004;overflow:hidden}
+    header{display:flex;flex:none;align-items:center;gap:10px;background:var(--mj-surface, #2b343b);color:var(--mj-text, #f0f2f1);padding:10px 12px;cursor:grab;user-select:none;touch-action:none}:host([data-dragging]) header{cursor:grabbing}header strong{font-size:14px;flex:1}header button{padding:2px 8px;color:var(--mj-text, #f0f2f1);background:transparent;border-color:var(--mj-border, #46515a)}
+    .body{padding:12px;min-height:0;overflow:auto}.controls{display:flex;gap:6px;align-items:center;flex-wrap:wrap}.controls select{padding:5px;color:var(--mj-text, #f0f2f1);background:var(--mj-bg, #20272d);border:1px solid var(--mj-border, #46515a);border-radius:5px;max-width:100%}
+    .status{margin:10px 0;padding:8px 10px;background:var(--mj-surface, #2b343b);border-left:3px solid var(--mj-accent, #8bd4d1)}.status.bad{background:var(--mj-warning-bg, #3b3028);border-color:var(--mj-warn, #ef9b8f)}
+    .muted{color:var(--mj-muted, #b5bfc5)}.meta{display:flex;gap:12px;flex-wrap:wrap}.round{font-size:21px;font-weight:700;color:var(--mj-text, #f0f2f1)}.meta span{white-space:nowrap}
     .dora-row{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}
-    .riichi-alert{margin:10px 0;padding:10px 12px;background:#3a2d2c;border:2px solid #ef9b8f;border-radius:6px;color:#ef9b8f;font-weight:700;font-size:15px}.drawn-tile{display:inline-flex;margin-left:10px}
-    .round-result{margin:10px 0;padding:8px;background:#2b343b;border-left:3px solid #8bd4d1}.round-result h3{margin-top:0}.score-table{width:100%;border-collapse:collapse;font-size:12px}.score-table th,.score-table td{padding:4px;text-align:right;border-bottom:1px solid #46515a}.score-table th:first-child,.score-table td:first-child{text-align:left}.history-rounds{padding-left:20px}.history-rounds li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid #46515a}#history-match{max-width:100%;padding:5px}.history-view{padding:8px;margin:8px 0;background:#3b3028}
-    h3{font-size:13px;margin:12px 0 5px}p{margin:6px 0}.tiles{display:flex;gap:3px;flex-wrap:wrap;align-items:flex-start}.tile{display:inline-block;flex:none;width:23px;height:37px;padding:0;object-fit:contain;vertical-align:middle;border-radius:2px}.tile.unknown{display:inline-flex;align-items:center;justify-content:center;background:#2b343b;border:1px solid #46515a;color:#b5bfc5;font-size:18px}.river>span{position:relative}.called:after{content:'';position:absolute;left:2px;right:2px;top:18px;border-top:2px solid #b5bfc5;transform:rotate(-35deg);pointer-events:none}.river small{display:block;text-align:center;font-size:9px;line-height:12px;color:#b5bfc5}.riichi .tile{outline:2px solid #ef9b8f;outline-offset:1px}.events .tile{width:20px;height:32px}.player{border-top:1px solid #46515a;margin-top:10px;padding-top:8px}.player-head{display:flex;justify-content:space-between;gap:10px}.player-head b{color:#f0f2f1}
-    details{margin-top:12px}summary{cursor:pointer;font-weight:700}.events{list-style:none;padding:0;margin:6px 0}.events li{padding:5px 0;border-bottom:1px solid #46515a;font-size:12px;overflow-wrap:anywhere}.warn{color:#ef9b8f}.slider{width:100%;accent-color:#8bd4d1}.replay-controls{margin-top:10px;padding:8px;background:#2b343b}.foot{margin-top:12px;font-size:11px;color:#b5bfc5}.badge{background:#2b343b;border-radius:3px;padding:1px 5px}.pill{width:auto}.pill header{gap:8px;padding:8px 11px}.pill header strong{font-size:12px}.pill header button{font-size:11px}.body{overscroll-behavior:contain}select{color:#f0f2f1;background:#2b343b}#history-match{background:#2b343b;color:#f0f2f1;border:1px solid #46515a;border-radius:4px}header .indicator{width:8px;height:8px;background:#d7b565;border-radius:50%}.connected .indicator{background:#70d4c0}
+    .riichi-alert{margin:10px 0;padding:10px 12px;background:var(--mj-alert-bg, #3a2d2c);border:2px solid var(--mj-warn, #ef9b8f);border-radius:6px;color:var(--mj-warn, #ef9b8f);font-weight:700;font-size:15px}.drawn-tile{display:inline-flex;margin-left:10px}
+    .round-result{margin:10px 0;padding:8px;background:var(--mj-surface, #2b343b);border-left:3px solid var(--mj-accent, #8bd4d1)}.round-result h3{margin-top:0}.score-table{width:100%;border-collapse:collapse;font-size:12px}.score-table th,.score-table td{padding:4px;text-align:right;border-bottom:1px solid var(--mj-border, #46515a)}.score-table th:first-child,.score-table td:first-child{text-align:left}.history-rounds{padding-left:20px}.history-rounds li{display:flex;align-items:center;justify-content:space-between;gap:8px;padding:6px 0;border-bottom:1px solid var(--mj-border, #46515a)}#history-match{max-width:100%;padding:5px}.history-view{padding:8px;margin:8px 0;background:var(--mj-warning-bg, #3b3028)}
+    h3{font-size:13px;margin:12px 0 5px}p{margin:6px 0}.tiles{display:flex;gap:3px;flex-wrap:wrap;align-items:flex-start}.tile{display:inline-block;flex:none;width:23px;height:37px;padding:0;object-fit:contain;vertical-align:middle;border-radius:2px}.tile.unknown{display:inline-flex;align-items:center;justify-content:center;background:var(--mj-surface, #2b343b);border:1px solid var(--mj-border, #46515a);color:var(--mj-muted, #b5bfc5);font-size:18px}.river>span{position:relative}.called:after{content:'';position:absolute;left:2px;right:2px;top:18px;border-top:2px solid var(--mj-muted, #b5bfc5);transform:rotate(-35deg);pointer-events:none}.river small{display:block;text-align:center;font-size:9px;line-height:12px;color:var(--mj-muted, #b5bfc5)}.riichi .tile{outline:2px solid var(--mj-warn, #ef9b8f);outline-offset:1px}.events .tile{width:20px;height:32px}.player{border-top:1px solid var(--mj-border, #46515a);margin-top:10px;padding-top:8px}.player-head{display:flex;justify-content:space-between;gap:10px}.player-head b{color:var(--mj-text, #f0f2f1)}
+    details{margin-top:12px}summary{cursor:pointer;font-weight:700}.events{list-style:none;padding:0;margin:6px 0}.events li{padding:5px 0;border-bottom:1px solid var(--mj-border, #46515a);font-size:12px;overflow-wrap:anywhere}.warn{color:var(--mj-warn, #ef9b8f)}.slider{width:100%;accent-color:var(--mj-accent, #8bd4d1)}.replay-controls{margin-top:10px;padding:8px;background:var(--mj-surface, #2b343b)}.foot{margin-top:12px;font-size:11px;color:var(--mj-muted, #b5bfc5)}.badge{background:var(--mj-surface, #2b343b);border-radius:3px;padding:1px 5px}.pill{width:auto}.pill header{gap:8px;padding:8px 11px}.pill header strong{font-size:12px}.pill header button{font-size:11px}.body{overscroll-behavior:contain}select{color:var(--mj-text, #f0f2f1);background:var(--mj-surface, #2b343b)}#history-match{background:var(--mj-surface, #2b343b);color:var(--mj-text, #f0f2f1);border:1px solid var(--mj-border, #46515a);border-radius:4px}header .indicator{width:8px;height:8px;background:#d7b565;border-radius:50%}.connected .indicator{background:#70d4c0}
+    ${root.MJPanelTheme.css}
   `;
   function render() {
     if (!shadow) return;
@@ -175,7 +176,7 @@
       ${displayLive && s.selfSeat === i ? '' : riverHtml(p, S.seatWind(s, i) + '家牌河')}
       ${p.melds.length ? '<div class="tiles" style="margin-top:5px">副露 ' + p.melds.map(m => '<span>' + m.tiles.map(tileHtml).join('') + '</span>').join(' ') + '</div>' : ''}</div>`).join('');
     shadow.innerHTML = `<style>${css}</style><section class="shell ${collapsed ? 'pill' : ''} ${connected ? 'connected' : ''}" aria-label="雀魂牌局观察器">
-      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${esc(collapsed ? '牌局' : options.title || '雀魂牌局获取器')}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
+      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${esc(collapsed ? '牌局' : options.title || '雀魂牌局获取器')}</strong><button type="button" data-theme-toggle></button><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
       ${collapsed ? '' : `<div class="body"><div class="controls"><select id="mode" aria-label="数据来源"><option value="live" ${mode === 'live' ? 'selected' : ''}>实时消息</option><option value="replay" ${mode === 'replay' ? 'selected' : ''}>牌谱记录</option></select>
       <select id="seat" aria-label="自家座风" ${s.round && !historical ? '' : 'disabled'}><option value="" ${s.selfSeat === null ? 'selected' : ''}>自家：${mode === 'replay' ? '请选择' : '待识别'}</option>${s.round ? s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}" ${s.selfSeat === i ? 'selected' : ''}>自家：${S.seatWind(s, i)}</option>`).join('') : ''}</select><button id="export">导出核对记录</button></div>
       ${historical ? '<div class="history-view">历史记录 · ' + roundText(s) + ' · ' + s.honba + '本场 <button id="history-return">返回当前牌局</button></div>' : ''}
@@ -191,6 +192,7 @@
       <details id="recent-events"><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : historical ? '<li class="muted">历史记录保存结算快照，不含逐事件回放。</li>' : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
       <details id="collector-status"><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p>${s.warnings.map(w => '<p class="muted">' + esc(w) + '</p>').join('')}<ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>
       </div>`}</section>`;
+    theme.bind(shadow.querySelector('[data-theme-toggle]'));
     shadow.getElementById('collapse').onclick = () => { collapsed = !collapsed; render(); };
     placePanel(panelPosition);
     if (collapsed) return;
@@ -225,6 +227,8 @@
     if (host || !container || document.getElementById('mj-observer-host')) return;
     host = document.createElement('div'); host.id = 'mj-observer-host';
     Object.assign(host.style, { position: 'fixed', inset: 'auto', left: '14px', top: '40%', zIndex: '2147483647', margin: '0', padding: '0', border: '0', background: 'transparent', overflow: 'visible' });
+    theme = root.MJPanelTheme.attach(host);
+    cleanup.push(() => theme.destroy());
     shadow = host.attachShadow({ mode: 'open' }); container.appendChild(host);
     enablePanelDragging(); render();
     return host;

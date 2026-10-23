@@ -144,6 +144,7 @@ test('river and event rendering distinguish unknown, tedashi and tsumogiri inclu
     document: { getElementById: () => null, documentElement: null, addEventListener() {} },
     window: { addEventListener() {} }
   };
+  vm.runInNewContext(fs.readFileSync(require.resolve('../extension/panel-theme.js'), 'utf8'), context);
   const source = fs.readFileSync(require.resolve('../extension/overlay.js'), 'utf8');
   vm.runInNewContext(source, context);
   context.views = context.MJCollectorPanel.create({ controller: { subscribe() { return () => {}; } } }).renderers;

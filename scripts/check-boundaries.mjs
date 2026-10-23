@@ -10,7 +10,7 @@ export const providers = {
   MJMjaiAdapter: 'adapters/mjai.js', MJEngineEndpoint: 'adapters/engine-endpoint.js',
   MJNagaReplay: 'adapters/naga-replay.js', MJNagaPanel: 'naga-panel.js',
   MJEngineAgent: 'engine-agent.js', MJEngineResult: 'contracts/engine-result.js',
-  MJAnalysisPanel: 'analysis-panel.js', MJFloatingPanel: 'floating-panel.js', MJHandHints: 'hand-hints.js', MJCollectorController: 'collector/controller.js',
+  MJPanelTheme: 'panel-theme.js', MJAnalysisPanel: 'analysis-panel.js', MJFloatingPanel: 'floating-panel.js', MJHandHints: 'hand-hints.js', MJCollectorController: 'collector/controller.js',
   MJCollectorBrowser: 'collector/browser-adapter.js', MJCollectorPanel: 'overlay.js', MJCollectorApp: 'apps/collector-app.js', MJAgentApp: 'apps/agent-app.js'
 };
 // Small lexical scanner: comments/string text are ignored, template expressions are scanned.
@@ -119,7 +119,8 @@ export function checkSourceBoundary(file, source) {
     for (let i = 0; i < ts.length; i++) if (['root', 'globalThis', 'window'].includes(ts[i].value) && ts[i+1]?.value === '[' && ts[i+2]?.type !== 'string') throw new Error(`${file}: dynamic UI global access is forbidden`);
     if (deps.includes('agent.js') || deps.includes('engine-agent.js')) throw new Error(`${file}: UI must not depend on Agent`);
     if (file === 'overlay.js' && deps.some(d => ['analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'adapters/model-endpoint.js'].includes(d))) throw new Error(`${file}: collector UI must not depend on analysis`);
-    if (file === 'floating-panel.js' || file === 'hand-hints.js') allowed = new Set();
+    if (file === 'floating-panel.js') allowed = new Set(['panel-theme.js']);
+    if (file === 'hand-hints.js') allowed = new Set();
   }
   if (allowed) for (const dependency of deps) if (!allowed.has(dependency)) throw new Error(`${file}: forbidden dependency ${dependency}`);
   if (pure) {
