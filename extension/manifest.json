@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "雀魂牌局观察器 · 核对原型",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "观察雀魂牌局，支持用户配置大模型进行局面分析。",
   "web_accessible_resources": [
     {
@@ -32,6 +32,7 @@
       "js": [
         "state.js",
         "history.js",
+        "mahjong-analysis.js",
         "analysis.js",
         "analysis-panel.js",
         "overlay.js"

@@ -204,3 +204,17 @@ test('dora display tracks newly revealed indicators, preserves duplicates and re
   assert.deepEqual(S.doraTiles(s), ['9m']);
   assert.deepEqual(S.doraTiles(S.initial()), []);
 });
+
+
+test('discard method preserves explicit booleans and normalizes missing or invalid values to unknown', () => {
+  for (const value of [true, false, undefined, null, 0, 1, 'false']) {
+    const before = S.apply(S.initial(), round());
+    const next = S.apply(before, evt('DiscardTile', { seat: 0, tile: '1m', tsumogiri: value, step: 1 }));
+    assert.equal(next.players[0].discards[0].tsumogiri, typeof value === 'boolean' ? value : null);
+    assert.equal(before.players[0].discards.length, 0);
+  }
+  // Protobuf defaults are decoded booleans and remain known tedashi.
+  const decoded = P.decodeEvent('ActionDiscardTile', F.cat(F.n(1, 0), F.t(2, '1m')), 'live');
+  assert.equal(decoded.tsumogiri, false);
+  assert.equal(S.apply(S.apply(S.initial(), round()), decoded).players[0].discards[0].tsumogiri, false);
+});

@@ -13,8 +13,9 @@
 | `extension/history.js` | 整场与各局记录、快照整理 | ISOLATED / 后台 |
 | `extension/history-storage.js` | 整场记录的本地存储消息处理，与模型配置分键保存 | 扩展 Service Worker |
 | `extension/overlay.js` | 桥接消息校验、实时与牌谱游标、导出、主体面板和刷新节流 | ISOLATED 世界 |
-| `extension/analysis.js` | 独立构造允许发送的局面快照、验证接口地址、生成主机授权模式与系统提示词 | ISOLATED / 后台 / 设置 / Node 测试 |
-| `extension/analysis-panel.js` | 数据范围与任务选择、发送预览、请求状态、纯文本结果和过期提示 | ISOLATED 世界 |
+| `extension/mahjong-analysis.js` | 向听、形状进张、已见牌计数和逐对手防守特征 | ISOLATED / 后台 / Node 测试 |
+| `extension/analysis.js` | 授权快照、逐任务合同与提示词、JSON Schema、严格结果校验、接口验证 | ISOLATED / 后台 / 设置 / Node 测试 |
+| `extension/analysis-panel.js` | 数据范围与任务选择、发送预览、结构化牌面建议、本地效率表和过期提示 | ISOLATED 世界 |
 | `extension/background.js` | 身份校验、读取配置、验证授权、添加密钥、调用模型、取消与超时 | 扩展 Service Worker |
 | `extension/options.html/js/css` | 开关、接口、模型、密钥；主机权限申请、保存与清除 | 扩展设置页 |
 | `extension/tiles/` | 本地牌面资源 | 扩展静态资源 |
@@ -44,7 +45,7 @@ flowchart TD
   Storage --> Worker
   Worker --> Provider[用户指定的模型接口]
   Provider --> Worker
-  Worker --> Result[面板纯文本结果 / 过期标记]
+  Worker --> Result[逐对手风险 / 本地效率表 / 过期标记]
 ```
 
 MAIN 中的采集器仅观察已有通信，不主动获取牌谱，不调用游戏出牌接口。桥接数据不作为可信来源；模型消息不复用页面的 `postMessage` 通道。
@@ -58,6 +59,12 @@ MAIN 中的采集器仅观察已有通信，不主动获取牌谱，不调用游
 `history:load` / `history:save` 由后台的 `history-storage.js` 处理，限制同扩展、指定游戏origin与顶层frame；通过队列串行读改写，使用独立的 `roundHistoryV1` 键，不读取或返回模型配置。保留最近20场、每场最多100局，并按约4MiB总量淘汰最旧场次。离线预览仅使用独立localStorage键，不与真实扩展共享记录。
 
 ## 模型模块边界
+
+内部授权快照保持 `mj-analysis-v1`，后台 `cleanSnapshot()` 再次逐字段清洗后，`prepare()` 生成外发 `mj-analysis-v2`。任务为 `danger`、`efficiency`、`combined`，兼容旧 `discard` / `both`。防守使用有序牌河及 nullable 手摸切；效率只使用自家手牌、副露和已授权已见牌统计；综合任务通过一次模型请求组合两模块输入和提示词。
+
+`MJMahjongAnalysis.analyze()` 仅接收清洗后的快照。`localAnalysis` 按任务挑选防守或效率结果；后台忽略页面消息自带的本地计算字段，重新计算。算法和合同采用有界缓存，预览通过 `model:prepare` 在后台异步计算，避免界面刷新阻塞游戏线程。后台请求和预览共用 `prepare()` 的真实数据。普通型、七对子、国士向听及有效牌由本地计算，未见枚数为上界，模型只作解释。
+
+输出经固定 JSON Schema 和本地严格解析校验，兼容 JSON 代码围栏，无需服务商支持 `response_format`。检查任务、合法候选、逐对手风险、现物证据及无内容结果；13 张、立直摸牌未知、手牌非法或已结算时禁止具体弃牌建议。未知手摸切保留 `null`，协议已确认的默认 `false` 仍为手切。界面转义文本，仅加载本地 SVG 牌面；任务、取消或配置变更使在途响应失效，防止旧结果回填。
 
 - **数据合同**：`mj-analysis-v1` 包含来源、完整性、阶段、自家座位、最近动作序号和有限的采集警告。可选的 `game` 不含手牌和牌河；`rivers` 仅含所选座位的弃牌及摸切、立直、已鸣标记；`selfHand` 仅含已选自家的手牌。显式逐字段拷贝，避免扩展局面对象时顺带外发账号或对手暗牌。
 - **凭据**：`modelConfig` 由设置页保存到 `chrome.storage.local`，后台将访问级别限制为 `TRUSTED_CONTEXTS`。内容脚本通过 `model:status` 仅取得开关和模型名称。设置回到游戏时刷新状态，也可手动刷新；即使面板状态过时，后台仍重新检查开关与授权。

@@ -135,8 +135,9 @@
     return (layout.tiles.length ? layout.tiles.map(tileHtml).join('') : layout.drawn ? '' : handHtml([]))
       + (layout.drawn ? '<span class="drawn-tile" title="刚摸的牌">' + tileHtml(layout.drawn) + '</span>' : '');
   }
+  const discardMethod = t => t.tsumogiri === true ? '摸切' : t.tsumogiri === false ? '手切' : '切牌方式未知';
   function riverHtml(player, label) {
-    return `<div class="river tiles" aria-label="${esc(label)}" style="margin-top:5px">${player.discards.length ? player.discards.map(t => `<span class="${t.called ? 'called' : ''} ${t.riichi ? 'riichi' : ''}" title="${t.called ? '已被鸣牌；' : ''}${t.tsumogiri ? '摸切' : '手切'}">${tileHtml(t.tile)}<small>${t.called ? '已鸣' : t.riichi ? '立直' : t.tsumogiri ? '摸切' : '手切'}</small></span>`).join('') : '<span class="muted">牌河：空 / 尚未采集</span>'}</div>`;
+    return `<div class="river tiles" aria-label="${esc(label)}" style="margin-top:5px">${player.discards.length ? player.discards.map(t => `<span class="${t.called ? 'called' : ''} ${t.riichi ? 'riichi' : ''}" title="${t.called ? '已被鸣牌；' : ''}${discardMethod(t)}">${tileHtml(t.tile)}<small>${t.called ? '已鸣' : t.riichi ? '立直' : discardMethod(t)}</small></span>`).join('') : '<span class="muted">牌河：空 / 尚未采集</span>'}</div>`;
   }
   const roundText = s => s.round ? `${suits[s.round.wind] || '?'}${s.round.index + 1}局` : '等待开局';
   const resultText = s => !s.result ? '进行中' : s.result.kind === 'Hule'
@@ -164,7 +165,7 @@
   function eventHtml(e) {
     const text = `${e.step !== undefined ? '#' + e.step + ' ' : ''}${e.seat !== undefined ? windName(e.seatWind) + ' ' : ''}${eventNames[e.kind] || e.kind}`;
     return esc(text) + (e.tile ? ' ' + tileHtml(e.tile) : '') + (e.tiles ? ' ' + e.tiles.map(tileHtml).join(' ') : '')
-      + (e.riichi ? ' · 立直' : '') + (e.tsumogiri ? ' · 摸切' : '');
+      + (e.riichi ? ' · 立直' : '') + (e.kind === 'DiscardTile' ? ' · ' + discardMethod(e) : '');
   }
   function recalculate() {
     replayState = S.initial('replay', replaySelfSeat);

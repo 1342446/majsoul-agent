@@ -27,7 +27,7 @@
       players: Array.from({ length: 4 }, (_, i) => {
         const p = s.players?.[i] || {};
         return { hand: tiles(p.hand), riichi: !!p.riichi, norths: number(p.norths),
-          discards: (Array.isArray(p.discards) ? p.discards : []).slice(0, 60).map(d => ({ tile: tile(d.tile), riichi: !!d.riichi, tsumogiri: !!d.tsumogiri, called: !!d.called })),
+          discards: (Array.isArray(p.discards) ? p.discards : []).slice(0, 60).map(d => ({ tile: tile(d.tile), riichi: !!d.riichi, tsumogiri: typeof d.tsumogiri === 'boolean' ? d.tsumogiri : null, called: !!d.called })),
           melds: (Array.isArray(p.melds) ? p.melds : []).slice(0, 4).map(m => ({ type: number(m.type), tiles: tiles(m.tiles, 4), froms: numbers(m.froms) })) };
       }), result };
   }

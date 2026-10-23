@@ -7,3 +7,13 @@ research/sources/
 research/current-web/
 research/current-desktop/
 research/evidence/
+research/public-release/
+dist/
+*.har
+*.jsonl
+*.pem
+*.key
+browser-profiles/
+playwright-report/
+test-results/
+__pycache__/

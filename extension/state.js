@@ -66,7 +66,7 @@
       } else if (e.kind === 'DiscardTile') {
         s.turn = e.seat;
         if (hand) remove(s, hand, e.tile);
-        p.discards.push({ tile: e.tile, riichi: e.riichi, tsumogiri: e.tsumogiri, called: false });
+        p.discards.push({ tile: e.tile, riichi: e.riichi, tsumogiri: typeof e.tsumogiri === 'boolean' ? e.tsumogiri : null, called: false });
         if (e.riichi) p.riichi = true;
       } else if (e.kind === 'ChiPengGang') {
         s.turn = e.seat;

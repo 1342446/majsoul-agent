@@ -121,3 +121,40 @@ test('worker serializes history updates, isolates model credentials and authenti
   assert.equal(stored.modelConfig.apiKey,'SECRET');
   assert.equal(await send({type:'history:save',match:a},{...sender,url:'https://evil.example/'}),undefined);
 });
+
+
+test('history snapshots and JSON reload preserve unknown discard methods and legacy boolean values', () => {
+  const s = finish(S.apply(S.initial(), opening()));
+  const values = [true, false, undefined, null, 0, 1, 'false'];
+  s.players[0].discards = values.map(tsumogiri => ({ tile: '1m', tsumogiri }));
+  const expected = [true, false, null, null, null, null, null];
+  assert.deepEqual(H.snapshot(s).players[0].discards.map(d => d.tsumogiri), expected);
+  // Sanitize raw saved records as well as newly captured snapshots.
+  const raw = H.create('live', 'discard-semantics');
+  raw.rounds = [{ snapshot: s, recordedAt: Date.now() }];
+  const reloaded = H.sanitizeMatch(JSON.parse(JSON.stringify(raw)));
+  const saved = H.addRound(reloaded, s);
+  const exported = JSON.parse(JSON.stringify(H.sanitizeMatch(saved)));
+  assert.deepEqual(exported.rounds[0].snapshot.players[0].discards.map(d => d.tsumogiri), expected);
+});
+
+test('river and event rendering distinguish unknown, tedashi and tsumogiri including saved history', () => {
+  const context = {
+    __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, URL, location: { href: 'https://example.test/preview.html' },
+    document: { getElementById: () => null, documentElement: null, addEventListener() {} },
+    window: { addEventListener() {} }
+  };
+  const source = fs.readFileSync(require.resolve('../extension/overlay.js'), 'utf8');
+  vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.views = { riverHtml, eventHtml }; })();'), context);
+  const methods = [[true, '摸切'], [false, '手切'], [null, '切牌方式未知'], [undefined, '切牌方式未知']];
+  for (const [tsumogiri, label] of methods) {
+    const discard = { tile: '1m', tsumogiri };
+    const html = context.views.riverHtml({ discards: [discard] }, 'saved river');
+    assert.ok(html.includes('title="' + label + '"'));
+    assert.ok(html.includes('<small>' + label + '</small>'));
+    assert.ok(context.views.eventHtml({ ...discard, kind: 'DiscardTile' }).endsWith(' · ' + label));
+  }
+  const called = context.views.riverHtml({ discards: [{ tile: '1m', called: true, tsumogiri: null }] }, 'river');
+  assert.ok(called.includes('已被鸣牌；切牌方式未知'));
+  assert.ok(called.includes('<small>已鸣</small>'));
+});
