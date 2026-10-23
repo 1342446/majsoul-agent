@@ -63,7 +63,9 @@
 .analysis-candidates button[aria-pressed="true"]{border-color:var(--mj-accent, #8bd4d1)}
 .analysis-focus{margin:4px 0 8px;color:var(--mj-muted, #b5bfc5)}
 .analysis-focus small{color:var(--mj-accent, #8bd4d1)}
-.analysis-focus p{font-size:12px;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.analysis-focus p{font-size:12px;line-height:1.6;display:-webkit-box;-webkit-line-clamp:5;-webkit-box-orient:vertical;overflow:hidden;overflow-wrap:anywhere}
+.analysis-focus.is-expanded p{display:block;-webkit-line-clamp:unset;overflow:visible}
+.analysis-focus button{font-size:11px;padding:3px 8px;margin-top:4px}
 
 .analysis-switches{display:flex;flex-wrap:wrap;gap:6px 12px;border-bottom:1px solid var(--mj-border, #46515a);padding:4px 0 10px;margin-bottom:10px}
 .analysis-switches label{display:flex;align-items:center;gap:4px;margin:0;min-height:30px}

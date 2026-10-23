@@ -57,7 +57,7 @@
         if (!preferences.efficiency) { response.result.efficiency = []; if (response.localAnalysis) delete response.localAnalysis.efficiency; }
         if (!preferences.strategy && task === 'combined') response.result.decision = localResponse(data).result.decision;
         if (actualProvider === 'local' && !preferences.efficiency) response.result.decision = { action: 'unknown', tile: null, reasons: [preferences.strategy ? '综合攻守解释需要模型；本地仅提供已开启的确定性依据。' : '本地仅提供危险牌依据，不生成弃牌建议。'] };
-        focusTile = null;
+        focusTile = null; focusExpanded = false;
       }
       const completed = { ...response, actualProvider, seatLabels, positionPhase: data.phase, fingerprint: captured, time: new Date().toLocaleTimeString('zh-CN'), position: capturedPosition };
       if (automatic) result = completed; else globalResult = completed;
@@ -78,6 +78,7 @@
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
   let pendingAutomatic = false, globalResult = null, globalFailure = '';
   let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, statusRequestId = 0, connected = false;
+  let focusExpanded = false, focusResizeObserver = null;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tileBase = available ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
@@ -159,6 +160,7 @@
   function destroy() {
     cancelWork(); preferences = defaults(); preferencesLoaded = false; lastPosition = ''; lastAutoKey = ''; roundKey = ''; previousDiscards = 0; autoCalls = 0; lastModelAt = 0;
     hooks.onHints?.(null); hooks = {}; detailsState = {}; focusTile = null;
+    focusExpanded = false; focusResizeObserver?.disconnect(); focusResizeObserver = null;
     lifecycle++; requestId++;
     if (available && connected) {
       chrome.runtime.onMessage.removeListener(configChanged);
@@ -187,7 +189,7 @@
     if (sourceChanged || cursorChanged) {
       if (!busy || pendingAutomatic) cancelWork();
       failure = ''; preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
-      if (sourceChanged) { result = null; focusTile = null; }
+      if (sourceChanged) { result = null; focusTile = null; focusExpanded = false; }
     }
     current = analysisView; context = { ...position }; repaint = render;
     connect();
@@ -222,10 +224,10 @@
     const handHtml = `<div class="analysis-hand-tiles" style="--hand-count:${Math.max(hand.length, 1)};--concealed-count:${Math.max(hand.length - (drawnIndex >= 0 ? 1 : 0), 1)}"><div class="analysis-hand-concealed">${hand.map((tile, i) => i !== drawnIndex ? handFace(tile, i) : '').join('')}</div>${drawnIndex >= 0 ? `<div class="analysis-hand-drawn">${handFace(hand[drawnIndex], drawnIndex)}</div>` : ''}</div>`;
     const handSection = hand.length ? `<div class="analysis-hand" aria-label="当前自家手牌"><small class="muted">当前自家手牌</small>${handHtml}</div>` : '';
     const focusTiles = [...new Set([r?.decision.tile, ...candidateTiles])].filter(Boolean);
-    if (!focusTiles.includes(focusTile)) focusTile = r?.decision.tile || focusTiles[0] || null;
+    if (!focusTiles.includes(focusTile)) { focusTile = r?.decision.tile || focusTiles[0] || null; focusExpanded = false; }
     const focusedDanger = (r?.danger || []).filter(d => kind(d.tile) === kind(focusTile)).flatMap(d => d.opponents.map(o => `${result.seatLabels?.[o.seat] || ('座位 ' + o.seat)} · ${riskNames[o.level] || '未知'}：${(o.reasons || []).join('；')}`));
     const focusedEfficiency = (r?.efficiency || []).filter(e => e.tile === focusTile).flatMap(e => e.reasons || []);
-    const focusSummary = focusTile ? `<div class="analysis-focus" aria-label="候选牌解释"><small>${escape(MJSnapshotContract.label(focusTile))} · ${focusTile === r?.decision.tile ? '首选建议' : '候选解释'}</small><p>${escape([...focusedDanger, ...focusedEfficiency].join('；') || '暂无该牌的额外解释，请展开详细分析查看完整依据。')}</p></div>` : '';
+    const focusSummary = focusTile ? `<div class="analysis-focus${focusExpanded ? ' is-expanded' : ''}" aria-label="候选牌解释"><small>${escape(MJSnapshotContract.label(focusTile))} · ${focusTile === r?.decision.tile ? '首选建议' : '候选解释'}</small><p id="model-focus-text">${escape([...focusedDanger, ...focusedEfficiency].join('；') || '暂无该牌的额外解释，请展开详细分析查看完整依据。')}</p><button id="model-focus-toggle" aria-expanded="${focusExpanded}" aria-controls="model-focus-text" ${focusExpanded ? '' : 'hidden'}>${focusExpanded ? '收起' : '展开'}</button></div>` : '';
     const candidateHtml = focusTiles.length ? `<div class="analysis-candidates"><span class="muted">比较</span>${focusTiles.map((tile, index) => `<button id="model-candidate-${index}" data-candidate-tile="${escape(tile)}" aria-pressed="${tile === focusTile}" aria-label="查看${escape(MJSnapshotContract.label(tile))}的风险和效率理由">${face(tile)}</button>`).join('')}</div>${focusSummary}` : '';
     const roundLabel = current.round ? `${['东', '南', '西', '北'][current.round.wind] || '东'}${Number(current.round.index) + 1}局` : '等待开局';
     const selfLabel = Number.isInteger(current.selfSeat) ? current.seatLabels[current.selfSeat] : '';
@@ -255,7 +257,7 @@
       globalResult.position.source === 'replay' ? `事件 ${globalResult.position.cursor}` : '', globalResult.time].filter(Boolean).join(' · ') : '';
     const globalHtml = `<section class="analysis-global" aria-label="全局分析">
       <h3>全局分析</h3>
-      <div class="analysis-actions"><button id="model-run" ${busy || !!error || !preferencesLoaded ? 'disabled' : ''}>${globalBusy ? '正在分析…' : replay ? '分析所选局面' : '分析当前局面'}</button>${globalBusy ? '<button id="model-cancel">取消</button>' : ''}</div>
+      <div class="analysis-actions"><button id="model-run" ${busy || !!error || !preferencesLoaded ? 'disabled' : ''}>${replay ? '分析所选局面' : '分析当前局面'}</button>${globalBusy ? '<button id="model-cancel">取消</button>' : ''}</div>
       ${globalResult ? `<p class="analysis-meta muted">${escape(savedPosition)} · ${escape(globalResult.model)}</p><div class="analysis-global-result">
         <div class="analysis-decision"><span>${decisionHeading(globalResult)}</span>${globalResult.result.decision.tile ? face(globalResult.result.decision.tile) : ''}<p>${escape(globalResult.result.decision.reasons?.[0] || '请展开分析依据。')}</p></div>
         ${disclosure('global-details', '分析依据', `${resultHtml(globalResult)}${globalResult.position.hand.length ? `<div class="analysis-global-hand" aria-label="分析时手牌">${globalResult.position.hand.map(face).join('')}</div>` : ''}${localHtml(globalResult.localAnalysis, globalResult.positionPhase)}`)}</div>` : '<p class="muted">尚未分析</p>'}
@@ -268,11 +270,12 @@
       <label><input id="model-use" type="checkbox" ${preferences.useModel ? 'checked' : ''}> 调用模型</label>
       ${[['danger', '危险牌提示'], ['efficiency', '手牌建议'], ['strategy', '攻守建议']].map(([key, label]) => `<label><input id="feature-${key}" type="checkbox" ${preferences[key] ? 'checked' : ''}> ${label}</label>`).join('')}
       <button id="model-preset">综合辅助</button></div>
-      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${escape(selfLabel)}${replay ? '视角' : ''}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : !preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
+      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${escape(selfLabel)}${replay ? '视角' : ''}` : ''}</strong><span class="analysis-state">${!preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
+      ${busy ? `<p class="${live ? 'warn' : 'muted'}" role="status" aria-live="polite">${live ? '正在分析，请先不要出牌。' : '正在分析中…'}</p>` : ''}
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
       <div class="analysis-main" role="status" aria-live="polite"><h3>出牌提示</h3>
-      ${stale ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}
-      ${r ? `<div class="analysis-decision"><span>${decisionHeading(result)}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy && pendingAutomatic ? '正在分析出牌…' : !current.round ? '等待开局数据' : preferences.automatic ? '等待轮到你出牌' : '自动提示未开启'}</strong>${!hasFeatures() ? '<p class="muted">请至少开启一项辅助功能。</p>' : preferences.useModel && !enabled ? '<p class="muted">请在模型设置中接入并开启模型。</p>' : ''}</div>`}
+      ${stale && !busy ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}
+      ${r ? `<div class="analysis-decision"><span>${decisionHeading(result)}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : busy ? '' : `<div class="analysis-empty"><strong>${!current.round ? '等待开局数据' : preferences.automatic ? '等待轮到你出牌' : '自动提示未开启'}</strong>${!hasFeatures() ? '<p class="muted">请至少开启一项辅助功能。</p>' : preferences.useModel && !enabled ? '<p class="muted">请在模型设置中接入并开启模型。</p>' : ''}</div>`}
       ${replay ? '' : current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
       ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
       </div>
@@ -301,7 +304,15 @@
     }
     const section = container.querySelector('.analysis'); if (section) section.scrollTop = oldScroll;
     for (const detail of container.querySelectorAll?.('details[data-section]') || []) { detail.open = !!detailsState[detail.dataset.section]; detail.ontoggle = () => { detailsState[detail.dataset.section] = detail.open; }; }
-    focusTiles.forEach((tile, index) => { $('model-candidate-' + index).onclick = () => { focusTile = tile; render(); }; });
+    focusTiles.forEach((tile, index) => { $('model-candidate-' + index).onclick = () => { focusTile = tile; focusExpanded = false; render(); }; });
+    focusResizeObserver?.disconnect(); focusResizeObserver = null;
+    if (focusTile) {
+      const text = $('model-focus-text'), toggle = $('model-focus-toggle');
+      const updateOverflow = () => { toggle.hidden = !focusExpanded && !(text.scrollHeight > text.clientHeight + 1); };
+      toggle.onclick = () => { focusExpanded = !focusExpanded; render(); };
+      updateOverflow();
+      if (typeof ResizeObserver === 'function') { focusResizeObserver = new ResizeObserver(updateOverflow); focusResizeObserver.observe(text); }
+    }
     $('analysis-calibrate').onclick = () => { if (current?.hintsReady) current.onCalibrateHints?.(); };
     $('analysis-collector').onclick = () => current?.onCollector?.();
     $('analysis-history').onclick = () => current?.onHistory?.();

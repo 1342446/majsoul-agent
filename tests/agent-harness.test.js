@@ -29,7 +29,7 @@ test('agent runs authorized tools once, validates model content and emits payloa
     ['snapshot.validate', 'analysis.prepare', 'model.explain', 'result.validate']);
   assert.equal(JSON.stringify(result.trace).includes('PRIVATE'), false);
   assert.equal(JSON.stringify(result.trace).includes('等待摸牌'), false);
-  await assert.rejects(Agent.run({ snapshot, explain: async () => '{"arbitrary":"output"}' }), /结构化合同/);
+  await assert.rejects(Agent.run({ snapshot, explain: async () => '{"arbitrary":"output"}' }), /结构化要求：结果缺少必需字段/);
 });
 
 test('abort and timeout settle even if a tool ignores cancellation, and prevent later tools', async () => {

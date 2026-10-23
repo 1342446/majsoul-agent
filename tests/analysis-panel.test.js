@@ -48,9 +48,11 @@ test('panel cancellation discards delayed model results and synthetic clicks sen
   const p = panel(); await flush(); await p.element('model-run').onclick({ isTrusted: false });
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.match(p.html(), /正在分析，请先不要出牌/);
+  assert.equal((p.html().match(/正在分析/g) || []).length, 1);
   p.element('model-cancel').onclick({ isTrusted: true });
   p.resolve({ ok: true, model: 'late', result: { danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['late-result'] }, limitations: [] } });
-  await pending; assert.doesNotMatch(p.html(), /late-result/); assert.match(p.html(), /已取消分析/);
+  await pending; assert.doesNotMatch(p.html(), /late-result|正在分析，请先不要出牌/); assert.match(p.html(), /已取消分析/);
 });
 
 test('configuration changes cancel pending global analysis', async () => {
@@ -263,9 +265,22 @@ test('compact summary keeps hand and metadata folded while candidates switch exp
   assert.match(p.html(), /id="model-run"[^>]*>分析当前局面<\/button>/);
   assert.match(focus(), /首选建议/); assert.match(focus(), /较高/); assert.match(focus(), /警戒/);
   assert.match(main(), /防守 · 建议打<\/span>[^]*1m\.svg/); assert.doesNotMatch(main(), /回避/);
+  const explanation = p.element('model-focus-text');
+  explanation.scrollHeight = 180; explanation.clientHeight = 96; p.render();
+  assert.equal(p.element('model-focus-toggle').hidden, false);
+  p.element('model-focus-toggle').onclick();
+  assert.match(p.html(), /analysis-focus is-expanded/);
+  assert.match(p.html(), /id="model-focus-toggle" aria-expanded="true"/);
+  p.render(); assert.match(p.html(), /analysis-focus is-expanded/);
+  p.element('model-focus-toggle').onclick();
+  assert.doesNotMatch(p.html(), /analysis-focus is-expanded/);
+  p.element('model-focus-toggle').onclick();
   const originalDecision = p.hints.at(-1).decision;
   const requests = p.messages.length;
   p.element('model-candidate-1').onclick();
+  assert.doesNotMatch(p.html(), /analysis-focus is-expanded/);
+  explanation.scrollHeight = 20; explanation.clientHeight = 20; p.render();
+  assert.equal(p.element('model-focus-toggle').hidden, true);
   assert.match(p.html(), /data-candidate-tile="2m" aria-pressed="true"/);
   assert.match(focus(), /候选解释/); assert.match(focus(), /候选/);
   assert.equal(p.messages.length, requests);
@@ -327,10 +342,16 @@ test('automatic decisions merge features once, do not repeat on repaint, and can
   const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true } }); await flush();
   p.state.turn = p.state.selfSeat; p.state.lastStep = 1; p.render();
   assert.equal(p.timers.size, 1); p.fireTimer(); await flush();
+  assert.match(p.html(), /正在分析，请先不要出牌/);
+  assert.equal((p.html().match(/正在分析/g) || []).length, 1);
   assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
   assert.equal(p.messages.find(m => m.type === 'model:analyze').task, 'combined');
   p.resolve(modelResult()); await flush(); p.render(); assert.equal(p.timers.size, 0);
+  assert.doesNotMatch(p.html(), /正在分析，请先不要出牌/);
   p.state.lastStep = 2; p.render(); assert.ok([...p.timers.values()][0].delay > 7000); p.fireTimer(); await flush();
+  assert.match(p.html(), /正在分析，请先不要出牌/);
+  assert.doesNotMatch(p.html(), /局面或分析功能已变化，以下为旧结果，请重新分析/);
+  assert.equal((p.html().match(/正在分析/g) || []).length, 1);
   p.state.turn = (p.state.selfSeat + 1) % 4; p.state.lastStep = 3; p.render();
   p.resolve(modelResult()); await flush();
   assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
@@ -451,6 +472,19 @@ test('manual global analysis captures input and finishes after live changes with
   assert.match(globalSection(p), /东1局[^]*测试结论/);
   assert.match(globalSection(p), /警戒/);
   assert.equal(p.hints.at(-1), null);
+  p.destroy();
+});
+
+test('global analysis after discarding prioritizes in-progress status over stale automatic output', async () => {
+  const p = automaticPanel(); await flush(); await automaticResult(p);
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  p.state.selfHand.pop(); p.state.turn = 2; p.state.lastStep = 2; p.render();
+  assert.match(p.html(), /正在分析，请先不要出牌/);
+  assert.doesNotMatch(p.html(), /局面或分析功能已变化，以下为旧结果，请重新分析/);
+  assert.equal(p.hints.at(-1), null);
+  p.resolve(modelResult()); await pending;
+  assert.match(globalSection(p), /测试结论/);
+  assert.doesNotMatch(p.html(), /正在分析/);
   p.destroy();
 });
 

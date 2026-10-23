@@ -44,9 +44,20 @@
     if (task !== 'danger') data.efficiency = { ...(s.selfHand ? { selfHand: s.selfHand, selfDrawnTile: s.selfDrawnTile } : {}), ...(s.game ? { round: s.game.round, doras: s.game.doras,
       selfMelds: s.selfSeat === null ? null : s.game.players[s.selfSeat].melds, selfNorths: s.selfSeat === null ? null : s.game.players[s.selfSeat].norths } : {}), visibleTiles: visibleCounts(s) };
     const schema = JSON.parse(JSON.stringify(responseSchema)); schema.properties.task.enum = [task];
+    const legalDiscards = task !== 'danger' && s.phase === 'playing' && local.efficiency?.status === 'available' && local.efficiency.canDiscard === true
+      ? local.efficiency.candidates.map(c => c.tile) : [];
+    schema.properties.decision.properties.tile.enum = [...legalDiscards, null];
+    schema.properties.efficiency.maxItems = legalDiscards.length;
+    if (legalDiscards.length) schema.properties.efficiency.items.properties.tile.enum = legalDiscards;
+    if (task === 'danger') schema.properties.decision.properties.action.enum = ['unknown'];
+    if (task === 'efficiency') schema.properties.danger.maxItems = 0;
+    schema.properties.danger.items.properties.opponents.items.properties.seat.enum = Array.from({ length: s.playerCount }, (_, i) => i).filter(i => i !== s.selfSeat);
+    const riskTiles = local.danger.candidates.map(c => c.tile);
+    if (riskTiles.length) schema.properties.danger.items.properties.tile.enum = riskTiles;
+    else schema.properties.danger.maxItems = 0;
     schema.properties.decision.properties.reasons.description = '第一条向玩家说明所选攻守策略的具体依据及推荐牌的取舍；其余条目补充依据。进攻解释收益与风险，防守解释相对安全与保留的推进机会，弃和解释放弃和牌的原因与安全依据，unknown解释缺失信息及效率建议的边界。';
     schema.properties.danger.items.properties.opponents.maxItems = s.selfSeat === null ? s.playerCount : s.playerCount - 1;
-    const modulePrompt = task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined + '\n' + strategyExplanation : taskPrompts[task];
+    const modulePrompt = (task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined + '\n' + strategyExplanation : taskPrompts[task]) + '\n输出字段严格遵守本次JSON Schema：牌值使用列出的英文牌编码，赤五与普通五不可互换；建议牌只从列出的合法候选选取，无合法候选时返回null且efficiency为空。每张牌只列一次，每张牌下同一对手只列一次，空列表使用[]，列表中不得放null；不要增加额外字段。';
     const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n内部校验规则（仅用于决定输出内容，不得写入理由）：只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。\n面向玩家的说明：decision.reasons第一条直接解释首选建议的牌理或攻守取舍，其余理由补充具体依据；不要用“满足条件”“允许建议具体弃牌”代替分析。所有reasons和limitations使用简短自然中文，不输出字段路径、布尔值、状态枚举或内部校验过程。仅说明实际影响判断的限制；无法建议弃牌时说“等待摸牌”或具体缺失的信息。不要把数据完整、校验通过当成限制。例如理由可写“保留两面搭子，优先打出孤张九万”，限制可写“尚未采集到对家的完整牌河，风险判断有限”；示例只说明表达方式，实际结论必须有当前数据支持。', userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data) + '\n输出JSON Schema：\n' + JSON.stringify(schema), responseSchema: schema };
     preparations.set(key, JSON.stringify(prepared));
     if (preparations.size > 8) preparations.delete(preparations.keys().next().value);
@@ -55,34 +66,55 @@
   function parseResult(text, prepared) {
     let value;
     try { value = typeof text === 'string' ? JSON.parse(text.trim().replace(/^```(?:json)?\s*\n([\s\S]*?)\n```$/i, '$1')) : text; } catch (_) { throw new Error('模型分析结果不是有效 JSON。'); }
-    const fail = () => { throw new Error('模型分析结果不符合结构化合同，请重试。'); };
-    const object = (v, keys) => { if (!v || typeof v !== 'object' || Array.isArray(v) || Object.keys(v).length !== keys.length || keys.some(k => !Object.hasOwn(v, k))) fail(); };
-    const strings = v => { if (!Array.isArray(v) || v.length > 32 || v.some(x => typeof x !== 'string' || !x.trim() || x.length > 2000)) fail(); };
+    const fail = (message, code, path) => {
+      const error = new Error('模型分析结果不符合结构化要求：' + message);
+      error.validation = { code, path }; throw error;
+    };
+    const object = (v, keys, path) => {
+      if (!v || typeof v !== 'object' || Array.isArray(v)) fail('结果条目应为对象。', 'object_type', path);
+      if (keys.some(k => !Object.hasOwn(v, k))) fail('结果缺少必需字段。', 'missing_fields', path);
+      if (Object.keys(v).length !== keys.length) fail('结果包含未支持的字段。', 'extra_fields', path);
+    };
+    const strings = (v, path) => { if (!Array.isArray(v) || v.length > 32 || v.some(x => typeof x !== 'string' || !x.trim() || x.length > 2000)) fail('分析理由应为非空文字列表，单条不超过 2000 字。', 'reason_format', path); };
     const validTile = t => typeof t === 'string' && tile(t) === t && t !== '?';
-    object(value, ['task', 'danger', 'efficiency', 'decision', 'limitations']);
-    if (value.task !== prepared.task || !Array.isArray(value.danger) || value.danger.length > 34 || !Array.isArray(value.efficiency) || value.efficiency.length > 14) fail();
+    object(value, ['task', 'danger', 'efficiency', 'decision', 'limitations'], 'result');
+    if (value.task !== prepared.task) fail('返回的分析任务与本次请求不一致。', 'task_mismatch', 'task');
+    if (!Array.isArray(value.danger) || value.danger.length > 34) fail('危险牌列表格式或数量无效。', 'danger_format', 'danger');
+    if (!Array.isArray(value.efficiency) || value.efficiency.length > 14) fail('牌效率列表格式或数量无效。', 'efficiency_format', 'efficiency');
     const hand = prepared.data.efficiency?.selfHand || prepared.data.danger?.selfHand;
     const ownTile = t => validTile(t) && hand?.includes(t);
     const localEfficiency = prepared.data.localAnalysis?.efficiency;
     const canDiscard = prepared.data.phase === 'playing' && localEfficiency?.status === 'available' && localEfficiency.canDiscard === true;
     const candidateTile = t => canDiscard && ownTile(t) && localEfficiency.candidates.some(c => c.tile === t);
-    const unique = items => { if (new Set(items).size !== items.length) fail(); };
-    unique(value.danger.map(x => x.tile)); unique(value.efficiency.map(x => x.tile));
-    for (const d of value.danger) {
-      object(d, ['tile', 'opponents']);
+    const unique = (items, path) => { if (new Set(items).size !== items.length) fail('同一张牌或同一位对手被重复列出。', 'duplicate_entry', path); };
+    value.danger.forEach((d, i) => object(d, ['tile', 'opponents'], `danger[${i}]`));
+    value.efficiency.forEach((e, i) => object(e, ['tile', 'reasons'], `efficiency[${i}]`));
+    unique(value.danger.map(x => x.tile), 'danger'); unique(value.efficiency.map(x => x.tile), 'efficiency');
+    for (const [i, d] of value.danger.entries()) {
+      const path = `danger[${i}]`;
       const opponentCount = prepared.data.selfSeat === null ? prepared.data.rules.playerCount : prepared.data.rules.playerCount - 1;
-      if (!validTile(d.tile) || (hand && !ownTile(d.tile)) || !Array.isArray(d.opponents) || d.opponents.length > opponentCount) fail();
-      unique(d.opponents.map(o => o.seat));
-      for (const o of d.opponents) { object(o, ['seat', 'level', 'reasons']);
-        if (!Number.isInteger(o.seat) || o.seat < 0 || o.seat >= prepared.data.rules.playerCount || o.seat === prepared.data.selfSeat || !['safe', 'low', 'medium', 'high', 'unknown'].includes(o.level)) fail(); strings(o.reasons);
+      if (!validTile(d.tile) || (hand && !ownTile(d.tile))) fail('风险分析包含无效牌或自家手牌以外的牌。', 'danger_tile', path + '.tile');
+      if (!Array.isArray(d.opponents) || d.opponents.length > opponentCount) fail('对手列表格式或人数无效。', 'opponents_format', path + '.opponents');
+      d.opponents.forEach((o, j) => object(o, ['seat', 'level', 'reasons'], `${path}.opponents[${j}]`));
+      unique(d.opponents.map(o => o.seat), path + '.opponents');
+      for (const [j, o] of d.opponents.entries()) {
+        const opponentPath = `${path}.opponents[${j}]`;
+        if (!Number.isInteger(o.seat) || o.seat < 0 || o.seat >= prepared.data.rules.playerCount || o.seat === prepared.data.selfSeat) fail('风险分析的对手座位无效或误填为自家。', 'opponent_seat', opponentPath + '.seat');
+        if (!['safe', 'low', 'medium', 'high', 'unknown'].includes(o.level)) fail('风险等级使用了未支持的值。', 'risk_level', opponentPath + '.level');
+        strings(o.reasons, opponentPath + '.reasons');
         const evidence = prepared.data.localAnalysis?.danger?.candidates.find(c => c.tile === d.tile)?.opponents.find(p => p.seat === o.seat);
-        if ((o.level === 'safe' && !evidence?.genbutsu) || (!evidence?.riverAvailable && o.level !== 'unknown')) fail(); }
+        if (o.level === 'safe' && !evidence?.genbutsu) fail('模型将缺少现物依据的牌标为安全，已拒绝该结果。', 'unsupported_safe', opponentPath + '.level');
+        if (!evidence?.riverAvailable && o.level !== 'unknown') fail('缺少该对手的牌河依据，风险等级必须为未知。', 'missing_river_evidence', opponentPath + '.level'); }
     }
-    for (const e of value.efficiency) { object(e, ['tile', 'reasons']); if (!candidateTile(e.tile)) fail(); strings(e.reasons); }
-    object(value.decision, ['action', 'tile', 'reasons']); strings(value.decision.reasons); strings(value.limitations);
-    if (!['attack', 'defend', 'fold', 'unknown'].includes(value.decision.action) || (value.decision.tile !== null && !candidateTile(value.decision.tile))) fail();
-    if ((!hand && (value.efficiency.length || value.decision.tile !== null)) || (prepared.task === 'danger' && (value.efficiency.length || value.decision.action !== 'unknown' || value.decision.tile !== null)) || (prepared.task === 'efficiency' && value.danger.length)) fail();
-    if (!value.danger.length && !value.efficiency.length && !value.decision.reasons.length && !value.limitations.length) fail();
+    for (const [i, e] of value.efficiency.entries()) {
+      if (!candidateTile(e.tile)) fail(canDiscard ? '牌效率分析包含本次合法弃牌候选以外的牌。' : '当前不能建议弃牌，模型却返回了弃牌比较。', 'illegal_efficiency_tile', `efficiency[${i}].tile`);
+      strings(e.reasons, `efficiency[${i}].reasons`);
+    }
+    object(value.decision, ['action', 'tile', 'reasons'], 'decision'); strings(value.decision.reasons, 'decision.reasons'); strings(value.limitations, 'limitations');
+    if (!['attack', 'defend', 'fold', 'unknown'].includes(value.decision.action)) fail('攻守策略使用了未支持的值。', 'decision_action', 'decision.action');
+    if (value.decision.tile !== null && !candidateTile(value.decision.tile)) fail(canDiscard ? '建议打出的牌不在本次合法弃牌候选中。' : '当前处于等待摸牌、已结束或手牌信息不足的状态，不能建议具体弃牌。', 'illegal_decision_tile', 'decision.tile');
+    if ((!hand && (value.efficiency.length || value.decision.tile !== null)) || (prepared.task === 'danger' && (value.efficiency.length || value.decision.action !== 'unknown' || value.decision.tile !== null)) || (prepared.task === 'efficiency' && value.danger.length)) fail('返回内容超出了本次分析任务的范围。', 'task_scope', 'result');
+    if (!value.danger.length && !value.efficiency.length && !value.decision.reasons.length && !value.limitations.length) fail('模型未提供任何分析结论或限制说明。', 'empty_result', 'result');
     return JSON.parse(JSON.stringify(value));
   }
   const api = { systemPrompt, normalizeTask, prepare, responseSchema, parseResult, visibleCounts };

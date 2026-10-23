@@ -121,7 +121,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         } });
       return { ok: true, ...analysis, model: c.model };
     } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
-  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message) }));
+  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message), ...(error.validation ? { validation: error.validation } : {}) }));
   return true;
 });
 

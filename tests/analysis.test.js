@@ -245,6 +245,47 @@ test('strict structured result parser validates tasks, self hand suggestions and
   value.task = 'danger'; assert.deepEqual(A.parseResult(JSON.stringify(value), prepared('danger')), value);
 });
 
+test('result validation identifies the failed rule without exposing model text or mistaking null entries for network errors', async () => {
+  const p = prepared();
+  for (const [mutate, code, path] of [
+    [x => { delete x.decision; }, 'missing_fields', 'result'],
+    [x => { x.PRIVATE = 'MODEL_SECRET'; }, 'extra_fields', 'result'],
+    [x => { x.danger = [null]; }, 'object_type', 'danger[0]'],
+    [x => { x.danger[0].opponents = [null]; }, 'object_type', 'danger[0].opponents[0]'],
+    [x => { x.efficiency = [null]; }, 'object_type', 'efficiency[0]'],
+    [x => { x.decision.tile = '9p'; }, 'illegal_decision_tile', 'decision.tile'],
+    [x => { x.danger[0].opponents[0].level = 'safe'; }, 'unsupported_safe', 'danger[0].opponents[0].level'],
+    [x => { x.efficiency.push(x.efficiency[0]); }, 'duplicate_entry', 'efficiency']
+  ]) {
+    const value = answer(); mutate(value);
+    assert.throws(() => A.parseResult(value, p), error => {
+      assert.deepEqual(error.validation, { code, path });
+      assert.doesNotMatch(error.message, /PRIVATE|MODEL_SECRET/); assert.notEqual(error.name, 'TypeError'); return true;
+    });
+  }
+  const value = answer(); value.danger = [null];
+  const w = worker({ body: { choices: [{ message: { content: JSON.stringify(value) } }] } });
+  const result = await w.analyze();
+  assert.equal(result.ok, false); assert.equal(result.validation.code, 'object_type');
+  assert.match(result.error, /条目应为对象/); assert.doesNotMatch(result.error, /无法连接/);
+  assert.equal(w.requests.length, 1);
+});
+
+test('per-position schema reflects exact legal discards, task scopes, riichi draws and opponent seats', () => {
+  const p = prepared(), schema = p.responseSchema.properties;
+  assert.deepEqual(schema.decision.properties.tile.enum, [...p.data.localAnalysis.efficiency.candidates.map(c => c.tile), null]);
+  assert.deepEqual(schema.danger.items.properties.opponents.items.properties.seat.enum, [0,2,3]);
+  assert.equal(prepared('danger').responseSchema.properties.efficiency.maxItems, 0);
+  assert.deepEqual(prepared('danger').responseSchema.properties.decision.properties.tile.enum, [null]);
+  assert.equal(prepared('efficiency').responseSchema.properties.danger.maxItems, 0);
+  const s = state('live'); s.selfHand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z'];
+  const prepareState = () => A.prepare(C.snapshot(s, { game: true, hand: true, rivers: 'all' }), 'combined');
+  assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, [null]);
+  s.selfHand.push('4z'); s.players[1].riichi = true; s.drawnTiles[1] = '4z';
+  assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, ['4z',null]);
+  s.phase = 'ended'; assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, [null]);
+});
+
 test('worker uses separate task prompts, previews actual data and rejects malformed model recommendations', async () => {
   for (const task of ['danger', 'efficiency', 'combined']) {
     const value = { task, danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['数据不足。'] }, limitations: ['请补充完整手牌。'] };
