@@ -1,13 +1,17 @@
-(function () {
+(function (root) {
   'use strict';
-  if (document.getElementById('mj-observer-host')) return;
-  const S = globalThis.__MJ_OBSERVER_STATE_V1__, H = globalThis.MJHistory, CHANNEL = 'mj-observer-v1';
-  let host, shadow, mode = 'live', collapsed = false, live = S.initial(), replayState = S.initial('replay');
-  let records = [], cursor = 0, replaySelfSeat = null, log = [], diagnostics = [], seen = new Set(), stats = {}, connections = new Map();
-  let historyMatches = [], liveMatch = null, historyMatchId = '', historyView = null, historyWarning = '', historyReady = false;
-  const historyDirty = new Map();
-  const extensionStorage = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
-  const demoStorageKey = 'mj-observer-offline-history-v1';
+  function create(options) {
+  const { controller } = options;
+  const S = root.__MJ_OBSERVER_STATE_V1__;
+  let host, shadow, collapsed = false;
+  const cleanup = [];
+  let currentView, mode, live, replayState, recordCount, recentEvents, cursor, diagnostics, stats, connections, historyMatches, historyMatchId, historyView, historyWarning;
+  function refreshView() {
+    const v = currentView = controller.getView();
+    ({ mode, live, replayState, recordCount, recentEvents, cursor, diagnostics, stats, historyMatches, historyMatchId, historyView, historyWarning } = v);
+    connections = new Map(v.connections);
+  }
+  function viewedState() { return currentView.historical; }
   const positionStorageKey = 'mj-observer-panel-position-v1';
   let panelPosition = null, panelDrag = null;
   function savePanelPosition() {
@@ -52,80 +56,25 @@
     host.addEventListener('pointerup', finishDrag);
     host.addEventListener('pointercancel', finishDrag);
     host.addEventListener('lostpointercapture', finishDrag);
-    window.addEventListener('blur', () => finishDrag());
-    window.addEventListener('resize', () => { placePanel(panelPosition); if (panelPosition) savePanelPosition(); });
-    new ResizeObserver(() => {
+    const onBlur = () => finishDrag();
+    const onResize = () => { placePanel(panelPosition); if (panelPosition) savePanelPosition(); };
+    window.addEventListener('blur', onBlur);
+    window.addEventListener('resize', onResize);
+    cleanup.push(() => window.removeEventListener('blur', onBlur), () => window.removeEventListener('resize', onResize));
+    const observer = new ResizeObserver(() => {
       if (!panelPosition || panelDrag) return;
       const previous = panelPosition;
       placePanel(previous);
       if (previous.left !== panelPosition.left || previous.top !== panelPosition.top) savePanelPosition();
-    }).observe(host);
-  }
-  function viewedState() {
-    return historyView ? historyMatches.find(m => m.id === historyView.match)?.rounds.find(r => r.key === historyView.round)?.snapshot : null;
-  }
-  function saveHistory(match) {
-    historyMatches = H.merge(historyMatches, match);
-    if (!historyMatchId) historyMatchId = match.id;
-    if (!historyReady) { historyDirty.set(match.id, match); return; }
-    const operation = extensionStorage ? chrome.runtime.sendMessage({ type: 'history:save', match })
-      : Promise.resolve().then(() => { localStorage.setItem(demoStorageKey, JSON.stringify(historyMatches)); return { ok: true }; });
-    operation.then(r => { if (!r?.ok) throw new Error(); }).catch(() => {
-      historyWarning = '本地记录保存失败；当前页面仍可查看，请导出备份。'; schedule();
     });
-  }
-  async function loadHistory() {
-    try {
-      const response = extensionStorage ? await chrome.runtime.sendMessage({ type: 'history:load' })
-        : { ok: true, matches: JSON.parse(localStorage.getItem(demoStorageKey) || '[]') };
-      if (!response?.ok || !Array.isArray(response.matches)) throw new Error();
-      let loaded = [];
-      for (const m of response.matches) { try { loaded = H.merge(loaded, m); } catch (_) {} }
-      for (const m of historyMatches) loaded = H.merge(loaded, m);
-      historyMatches = loaded;
-    } catch (_) { historyWarning = '历史记录读取失败，当前采集不受影响。'; }
-    historyReady = true;
-    for (const m of historyDirty.values()) saveHistory(m);
-    historyDirty.clear(); schedule();
-  }
-  function newLiveMatch() { return H.create('live', 'live-' + crypto.randomUUID()); }
-  function recordLive(before, event, after) {
-    if (event.kind === 'MJStart') {
-      if (liveMatch && before.round && before.phase !== 'ended') saveHistory(H.addRound(liveMatch, before, Date.now(), true));
-      liveMatch = newLiveMatch(); historyMatchId = liveMatch.id; return;
-    }
-    if (event.kind === 'NewRound') {
-      const newMatch = H.isNewMatch(liveMatch, before, event);
-      if (liveMatch && before.round && before.phase !== 'ended' &&
-          (before.round.wind !== event.wind || before.round.index !== event.round || before.honba !== event.honba)) {
-        liveMatch = H.addRound(liveMatch, before, Date.now(), true);
-        saveHistory(liveMatch);
-      }
-      if (newMatch) { liveMatch = newLiveMatch(); historyMatchId = liveMatch.id; }
-      else if (liveMatch.rounds.length) { liveMatch = H.reconcile(liveMatch, event.scores); saveHistory(liveMatch); }
-    }
-    if (after.round && after.result && ['Hule', 'NoTile', 'LiuJu'].includes(event.kind)) {
-      if (!liveMatch) liveMatch = newLiveMatch();
-      liveMatch = H.addRound(liveMatch, after); saveHistory(liveMatch);
-    }
-  }
-  let replayHistorySequence = 0;
-  async function recordReplay(events) {
-    const sequence = ++replayHistorySequence;
-    try {
-      const hash = new Uint8Array(await crypto.subtle.digest('SHA-256', new TextEncoder().encode(JSON.stringify(events))));
-      if (sequence !== replayHistorySequence) return;
-      const id = 'replay-' + Array.from(hash, x => x.toString(16).padStart(2, '0')).join('');
-      saveHistory(H.fromReplay(events, S, id)); historyMatchId = id; schedule();
-    } catch (_) { historyWarning = '牌谱历史整理失败；当前牌谱游标仍可使用。'; schedule(); }
+    observer.observe(host); cleanup.push(() => observer.disconnect());
   }
   const suits = ['东', '南', '西', '北'];
   const windName = wind => suits.includes(wind) ? wind + '家' : '座风待定';
   const eventNames = { NewRound: '开局', DealTile: '摸牌', DiscardTile: '弃牌', ChiPengGang: '吃碰杠', AnGangAddGang: '暗杠/加杠',
     BaBei: '拔北', Hule: '和牌', NoTile: '荒牌流局', LiuJu: '途中流局', MJStart: '对局开始', Unsupported: '未支持事件' };
   const esc = x => String(x ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
-  const tileBase = typeof chrome !== 'undefined' && chrome.runtime?.getURL
-    ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/overlay.js', location.href)).href;
+  const tileBase = options.tileBase || 'tiles/';
   const tileHtml = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t)
     ? `<img class="tile" src="${esc(tileBase + t + '.svg')}" alt="${esc(S.label(t))}" title="${esc(S.label(t) + ' (' + t + ')')}" draggable="false">`
     : '<span class="tile unknown" role="img" aria-label="未知牌" title="未知牌">?</span>';
@@ -153,7 +102,7 @@
   }
   function historyHtml() {
     const selected = historyMatches.find(m => m.id === historyMatchId) || historyMatches[0];
-    if (selected) historyMatchId = selected.id;
+
     const label = m => (m.source === 'replay' ? '牌谱' : '实时对局') + ' · ' + new Date(m.startedAt).toLocaleString('zh-CN', { hour12: false }) + ' · ' + m.rounds.length + '局';
     return `<details id="round-history"><summary>整场记录${selected ? ' · ' + selected.rounds.length + '局' : ''}</summary>
       ${historyWarning ? '<p class="warn">' + esc(historyWarning) + '</p>' : ''}
@@ -167,14 +116,9 @@
     return esc(text) + (e.tile ? ' ' + tileHtml(e.tile) : '') + (e.tiles ? ' ' + e.tiles.map(tileHtml).join(' ') : '')
       + (e.riichi ? ' · 立直' : '') + (e.kind === 'DiscardTile' ? ' · ' + discardMethod(e) : '');
   }
-  function recalculate() {
-    replayState = S.initial('replay', replaySelfSeat);
-    for (let i = 0; i < cursor; i++) replayState = S.apply(replayState, records[i]);
-  }
   function exportData() {
-    const data = { format: 'mj-observer-v1', exportedAt: new Date().toISOString(), mode, stats,
-      state: viewedState() || (mode === 'live' ? live : replayState), historyView, historyMatches, replayCursor: cursor, events: log, replayRecords: records, diagnostics,
-      note: '仅牌局字段；牌谱游标独立于游戏画面。桥接数据仅供核对，不能作为可信证明。' };
+    const data = controller.exportData();
+    if (options.onExport) return options.onExport(data);
     const url = URL.createObjectURL(new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' }));
     const a = document.createElement('a'); a.href = url; a.download = `majsoul-observation-${Date.now()}.json`; a.click();
     setTimeout(() => URL.revokeObjectURL(url), 1000);
@@ -197,6 +141,7 @@
   `;
   function render() {
     if (!shadow) return;
+    refreshView();
     const oldScroll = shadow.querySelector('.body')?.scrollTop || 0;
     const oldDetails = [...shadow.querySelectorAll('details')].map(d => d.open);
     const historical = viewedState();
@@ -206,9 +151,9 @@
     const riichiAlert = riichiOpponents.length ? `<div class="riichi-alert" role="status">对手立直：${riichiOpponents.map(i => windName(S.seatWind(s, i))).join('、')}</div>`
       : s.phase === 'playing' && s.selfSeat === null && s.players.some(p => p.riichi) ? '<p class="warn">选择自家座风后显示对手立直提示。</p>' : '';
     const connected = [...connections.values()].includes('open');
-    const statusText = historical ? '正在查看历史结算快照 · 当前牌局继续采集' : mode === 'replay' ? (records.length ? '牌谱已解析 · 游标需手动与画面对齐' : '等待载入牌谱，请重新打开牌谱') :
+    const statusText = historical ? '正在查看历史结算快照 · 当前牌局继续采集' : mode === 'replay' ? (recordCount ? '牌谱已解析 · 游标需手动与画面对齐' : '等待载入牌谱，请重新打开牌谱') :
       (live.round ? (live.phase === 'ended' ? '本局已结束' : '已接收开局 · 持续采集中') : connected ? '连接已建立 · 等待牌局数据' : '采集器就绪 · 等待新连接');
-    const items = historical ? [] : mode === 'live' ? log.slice(-12).reverse() : records.slice(Math.max(0, cursor - 8), cursor).reverse();
+    const items = recentEvents;
     const selfRiver = s.selfSeat === null ? '<p class="muted">自家座位未识别，暂无法确定牌河。</p>' : riverHtml(s.players[s.selfSeat], '自家牌河');
     const playerHtml = s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((p, i) => `<div class="player">
       <div class="player-head"><b>${S.seatWind(s, i)}${s.selfSeat === i ? ' · 自家' : ''}${p.riichi ? ' · 立直' : ''}</b><span>${esc(s.scores[i] ?? '—')} 点${p.norths ? ' · 拔北' + p.norths : ''}</span></div>
@@ -216,7 +161,7 @@
       ${displayLive && s.selfSeat === i ? '' : riverHtml(p, S.seatWind(s, i) + '家牌河')}
       ${p.melds.length ? '<div class="tiles" style="margin-top:5px">副露 ' + p.melds.map(m => '<span>' + m.tiles.map(tileHtml).join('') + '</span>').join(' ') + '</div>' : ''}</div>`).join('');
     shadow.innerHTML = `<style>${css}</style><section class="shell ${collapsed ? 'pill' : ''} ${connected ? 'connected' : ''}" aria-label="雀魂牌局观察器">
-      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${globalThis.MJAnalysisPanel ? 'Majsoul Agent' : '雀魂牌局获取器'}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
+      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${esc(options.title || '雀魂牌局获取器')}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
       ${collapsed ? '' : `<div class="body"><div class="controls"><select id="mode" aria-label="数据来源"><option value="live" ${mode === 'live' ? 'selected' : ''}>实时消息</option><option value="replay" ${mode === 'replay' ? 'selected' : ''}>牌谱记录</option></select>
       <select id="seat" aria-label="自家座风" ${s.round && !historical ? '' : 'disabled'}><option value="" ${s.selfSeat === null ? 'selected' : ''}>自家：${mode === 'replay' ? '请选择' : '待识别'}</option>${s.round ? s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}" ${s.selfSeat === i ? 'selected' : ''}>自家：${S.seatWind(s, i)}</option>`).join('') : ''}</select><button id="export">导出核对记录</button></div>
       ${historical ? '<div class="history-view">历史记录 · ' + roundText(s) + ' · ' + s.honba + '本场 <button id="history-return">返回当前牌局</button></div>' : ''}
@@ -226,9 +171,9 @@
       <div class="meta"><b class="round">${esc(roundText(s))}</b><span>${s.honba} 本场</span><span>${s.sticks} 立直棒</span><span>余 ${s.remaining ?? '—'} 张</span></div>
       <div class="dora-row"><div><h3>宝牌指示牌</h3><div class="tiles" aria-label="宝牌指示牌">${handHtml(s.doras)}</div></div>
       <div><h3>宝牌</h3><div class="tiles" aria-label="宝牌">${handHtml(S.doraTiles(s))}</div></div></div>
-      ${displayLive ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver : historical ? '' : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${records.length}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${records.length}" value="${cursor}"><div class="controls"><button id="start" ${!records.length ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= records.length ? 'disabled' : ''}>下一事件</button></div></div>`}
+      ${displayLive ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver : historical ? '' : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${recordCount}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${recordCount}" value="${cursor}"><div class="controls"><button id="start" ${!recordCount ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= recordCount ? 'disabled' : ''}>下一事件</button></div></div>`}
       ${playerHtml}
-      <div id="model-analysis"></div>
+      <div id="extension-slot"></div>
       <details><summary>最近事件</summary><ol class="events">${items.length ? items.map(e => '<li>' + eventHtml(e) + '</li>').join('') : historical ? '<li class="muted">历史记录保存结算快照，不含逐事件回放。</li>' : '<li class="muted">尚未收到牌局事件。安装后刷新游戏，再打开牌谱或练习局。</li>'}</ol></details>
       <details><summary>采集状态 ${stats.gameEvents || 0} 条动作 / ${stats.errors || 0} 次失败</summary><p class="muted">已观察 ${stats.sockets || 0} 个连接；接收 ${stats.incoming || 0} 帧；牌谱 ${stats.replayRecords || 0} 条。</p>${s.warnings.map(w => '<p class="muted">' + esc(w) + '</p>').join('')}<ol class="events">${diagnostics.slice(-8).reverse().map(d => '<li>' + esc(d.stage + '：' + d.message) + '</li>').join('')}</ol></details>
       </div>`}</section>`;
@@ -237,71 +182,41 @@
     if (collapsed) return;
     shadow.querySelector('.body').scrollTop = oldScroll;
     [...shadow.querySelectorAll('details')].forEach((d, i) => { if (oldDetails[i] !== undefined) d.open = oldDetails[i]; });
-    globalThis.MJAnalysisPanel?.mount(shadow.getElementById('model-analysis'), s, { mode: historical ? 'history' : mode, historyView, cursor: !historical && mode === 'replay' ? cursor : null }, render);
+    options.extensionSlot?.(shadow.getElementById('extension-slot'), currentView, render);
     shadow.getElementById('export').onclick = exportData;
-    shadow.getElementById('mode').onchange = e => { historyView = null; mode = e.target.value; render(); };
+    shadow.getElementById('mode').onchange = e => { controller.setMode(e.target.value); };
     const historySelect = shadow.getElementById('history-match');
-    if (historySelect) historySelect.onchange = e => { historyMatchId = e.target.value; render(); };
+    if (historySelect) historySelect.onchange = e => { controller.selectMatch(e.target.value); };
     shadow.querySelectorAll('[data-history-round]').forEach(button => { button.onclick = () => {
-      historyView = { match: historyMatchId, round: button.dataset.historyRound }; render();
+      controller.viewRound(historyMatchId || historyMatches[0]?.id, button.dataset.historyRound);
     }; });
     const historyReturn = shadow.getElementById('history-return');
-    if (historyReturn) historyReturn.onclick = () => { historyView = null; render(); };
+    if (historyReturn) historyReturn.onclick = () => { controller.returnToCurrent(); };
     const seat = shadow.getElementById('seat');
     if (seat) seat.onchange = e => {
       const selected = e.target.value === '' ? null : Number(e.target.value);
-      if (mode === 'replay') { replaySelfSeat = selected; recalculate(); render(); return; }
-      live = S.selectSelfSeat(live, selected); render();
+      controller.setSelfSeat(selected);
     };
     if (mode === 'replay' && !historical) {
-      shadow.getElementById('cursor').onchange = e => { cursor = Number(e.target.value); recalculate(); render(); };
-      shadow.getElementById('prev').onclick = () => { cursor = Math.max(0, cursor - 1); recalculate(); render(); };
-      shadow.getElementById('next').onclick = () => { cursor = Math.min(records.length, cursor + 1); recalculate(); render(); };
-      shadow.getElementById('start').onclick = () => {
-        let i = Math.max(0, cursor - 1); while (i > 0 && records[i].kind !== 'NewRound') i--;
-        cursor = records[i]?.kind === 'NewRound' ? i + 1 : 0; recalculate(); render();
-      };
+      shadow.getElementById('cursor').onchange = e => controller.setCursor(e.target.value);
+      shadow.getElementById('prev').onclick = () => controller.previous();
+      shadow.getElementById('next').onclick = () => controller.next();
+      shadow.getElementById('start').onclick = () => controller.roundStart();
     }
   }
-  // Rendering is throttled so a burst of records does not stall the game.
+
   let renderTimer;
-  function schedule() { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; render(); }, 150); }
-  window.addEventListener('message', event => {
-    const m = event.data;
-    if (event.source !== window || event.origin !== location.origin || m?.channel !== CHANNEL || m.type === 'hello') return;
-    if (typeof m.epoch !== 'string' || !Number.isSafeInteger(m.sequence)) return;
-    const key = m.epoch + ':' + m.sequence;
-    if (seen.has(key)) return;
-    seen.add(key); if (seen.size > 5000) seen.delete(seen.values().next().value);
-    try {
-      if (m.type === 'event' && m.payload?.source === 'live' && typeof m.payload.kind === 'string') {
-        const before = live; live = S.apply(live, m.payload); recordLive(before, m.payload, live);
-        log.push({ ...m.payload, ...(m.payload.seat === undefined ? {} : { seatWind: S.seatWind(live, m.payload.seat) }), observedAt: new Date().toISOString() });
-        if (log.length > 1000) log.shift();
-      } else if (m.type === 'replay' && Array.isArray(m.payload?.records) && m.payload.records.length <= 25000) {
-        replaySelfSeat = null;
-        records = S.withSeatWinds(m.payload.records); cursor = records.findIndex(e => e.kind === 'NewRound') + 1;
-        mode = 'replay'; historyView = null; recalculate(); recordReplay(records);
-      } else if (m.type === 'status') stats = m.payload || {};
-      else if (m.type === 'diagnostic') {
-        diagnostics.push(m.payload); if (diagnostics.length > 60) diagnostics.shift();
-        if (['动作解码', '消息读取', '牌局响应', '断线恢复'].includes(m.payload?.stage)) {
-          live.complete = false;
-          if (!live.warnings.includes('采集发生错误，请检查采集状态并重新从开局采集')) live.warnings.push('采集发生错误，请检查采集状态并重新从开局采集');
-        }
-      }
-      else if (m.type === 'connection') connections.set(m.payload.socketId, m.payload.state);
-      schedule();
-    } catch (_) { diagnostics.push({ stage: '局面更新', message: '事件字段不符合预期，当前显示可能不完整。' }); schedule(); }
-  });
-  function mount() {
-    if (!document.documentElement) return;
+  const unsubscribe = controller.subscribe(() => { if (!renderTimer) renderTimer = setTimeout(() => { renderTimer = null; render(); }, 150); });
+  function mount(container = document.documentElement) {
+    if (host || !container || document.getElementById('mj-observer-host')) return;
     host = document.createElement('div'); host.id = 'mj-observer-host';
     Object.assign(host.style, { position: 'fixed', right: '12px', top: '12px', zIndex: '2147483647' });
-    shadow = host.attachShadow({ mode: 'open' }); document.documentElement.appendChild(host);
+    shadow = host.attachShadow({ mode: 'open' }); container.appendChild(host);
     enablePanelDragging(); render();
-    loadHistory();
-    window.postMessage({ channel: CHANNEL, type: 'hello' }, location.origin);
+    return host;
   }
-  if (document.documentElement) mount(); else document.addEventListener('DOMContentLoaded', mount, { once: true });
-})();
+  return { mount, render, destroy() { unsubscribe(); cleanup.splice(0).forEach(fn => fn()); clearTimeout(renderTimer); host?.remove(); host = null; shadow = null; },
+    renderers: { riverHtml, eventHtml } };
+  }
+  root.MJCollectorPanel = { create };
+})(typeof globalThis !== 'undefined' ? globalThis : this);

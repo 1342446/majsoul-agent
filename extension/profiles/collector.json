@@ -1,0 +1,50 @@
+{
+  "manifest_version": 3,
+  "name": "Majsoul Collector · 雀魂牌局获取器",
+  "version": "0.4.0",
+  "description": "仅在本地采集、展示和导出雀魂牌局，不包含模型分析。",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tiles/*.svg"
+      ],
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ],
+      "js": [
+        "protocol.js",
+        "capture.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ],
+      "js": [
+        "state.js",
+        "history.js",
+        "collector/controller.js",
+        "collector/browser-adapter.js",
+        "overlay.js",
+        "apps/collector-app.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "background": {
+    "service_worker": "collector-background.js"
+  }
+}

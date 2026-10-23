@@ -145,7 +145,8 @@ test('river and event rendering distinguish unknown, tedashi and tsumogiri inclu
     window: { addEventListener() {} }
   };
   const source = fs.readFileSync(require.resolve('../extension/overlay.js'), 'utf8');
-  vm.runInNewContext(source.replace(/\}\)\(\);\s*$/, 'globalThis.views = { riverHtml, eventHtml }; })();'), context);
+  vm.runInNewContext(source, context);
+  context.views = context.MJCollectorPanel.create({ controller: { subscribe() { return () => {}; } } }).renderers;
   const methods = [[true, '摸切'], [false, '手切'], [null, '切牌方式未知'], [undefined, '切牌方式未知']];
   for (const [tsumogiri, label] of methods) {
     const discard = { tile: '1m', tsumogiri };

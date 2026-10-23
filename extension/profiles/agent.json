@@ -1,0 +1,64 @@
+{
+  "manifest_version": 3,
+  "name": "Majsoul Agent",
+  "version": "0.4.0",
+  "description": "雀魂牌局获取、局面分析与复盘，包含有界工具执行和结果校验。",
+  "web_accessible_resources": [
+    {
+      "resources": [
+        "tiles/*.svg"
+      ],
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ]
+    }
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ],
+      "js": [
+        "protocol.js",
+        "capture.js"
+      ],
+      "run_at": "document_start",
+      "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://game.maj-soul.com/*"
+      ],
+      "js": [
+        "state.js",
+        "history.js",
+        "collector/controller.js",
+        "collector/browser-adapter.js",
+        "contracts/snapshot.js",
+        "collector/snapshot-adapter.js",
+        "mahjong-analysis.js",
+        "analysis.js",
+        "analysis-panel.js",
+        "overlay.js",
+        "apps/agent-app.js"
+      ],
+      "run_at": "document_start",
+      "world": "ISOLATED"
+    }
+  ],
+  "permissions": [
+    "storage"
+  ],
+  "optional_host_permissions": [
+    "https://*/*",
+    "http://localhost/*",
+    "http://127.0.0.1/*"
+  ],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  }
+}

@@ -10,10 +10,10 @@ load().catch(() => status('读取设置失败，请重新打开设置页。'));
 $('config').onsubmit = async event => {
   event.preventDefault();
   try {
-    const url = MJAnalysis.endpoint($('endpoint').value.trim());
+    const url = MJModelEndpoint.endpoint($('endpoint').value.trim());
     const model = $('model').value.trim(); if (!model) throw new Error('请填写模型名称。');
     // Request inside the submit gesture, before any asynchronous storage work.
-    if (!await chrome.permissions.request({ origins: [MJAnalysis.permissionOrigin(url.href)] })) throw new Error('未授予接口访问权限，设置尚未保存。');
+    if (!await chrome.permissions.request({ origins: [MJModelEndpoint.permissionOrigin(url.href)] })) throw new Error('未授予接口访问权限，设置尚未保存。');
     await chrome.storage.local.set({ modelConfig: { enabled: $('enabled').checked, endpoint: url.href,
       model, apiKey: $('key').value.trim() } });
     status('设置已保存。返回牌局面板，选择数据后点击分析。');

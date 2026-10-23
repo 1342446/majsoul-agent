@@ -4,6 +4,8 @@ const vm = require('node:vm');
 const fs = require('node:fs');
 const A = require('../extension/analysis.js');
 const S = require('../extension/state.js');
+const C = require('../extension/collector/snapshot-adapter.js');
+const E = require('../extension/adapters/model-endpoint.js');
 function state(source = 'replay') {
   const s = S.initial(source, 1); Object.assign(s, { round: { wind: 0, index: 0 }, scores: [25000, 25000, 25000, 25000], phase: 'playing', selfHand: ['1m', '0p'] });
   s.players.forEach((p, i) => { p.hand = [i + 1 + 's']; p.discards = [{ tile: i + 1 + 'p', tsumogiri: true }]; });
@@ -11,33 +13,33 @@ function state(source = 'replay') {
 }
 test('snapshot respects independent scopes and never sends replay opponents hands or extra fields', () => {
   const s = state(); const original = JSON.stringify(s);
-  const all = A.snapshot(s, { game: true, hand: true, rivers: 'all' });
+  const all = C.snapshot(s, { game: true, hand: true, rivers: 'all' });
   assert.deepEqual(all.selfHand, ['2s']); assert.equal(all.rivers.length, 4);
   assert.equal(JSON.stringify(all).includes('PRIVATE'), false); assert.equal(JSON.stringify(all).includes('SECRET'), false);
   assert.equal(all.game.players.some(p => 'hand' in p || 'discards' in p), false);
-  const one = A.snapshot(s, { game: false, hand: false, rivers: '2' });
+  const one = C.snapshot(s, { game: false, hand: false, rivers: '2' });
   assert.equal('game' in one, false); assert.equal('selfHand' in one, false); assert.deepEqual(one.rivers.map(p => p.seat), [2]);
   assert.equal(JSON.stringify(s), original);
 });
 test('live own hand, unknown tiles, missing seat, empty scopes and three-player seats', () => {
   const s = state('live'); s.selfHand.push('invalid');
-  assert.deepEqual(A.snapshot(s, { hand: true, rivers: 'none' }).selfHand, ['1m', '0p', '?']);
-  s.selfSeat = null; assert.throws(() => A.snapshot(s, { hand: true, rivers: 'none' }), /自家座位/);
-  assert.throws(() => A.snapshot(s, { rivers: 'none' }), /至少/);
-  s.scores.pop(); assert.throws(() => A.snapshot(s, { rivers: '3' }), /有效/);
-  assert.equal(A.snapshot(s, { rivers: 'all' }).rivers.length, 3);
-  assert.throws(() => A.snapshot(S.initial(), { game: true }), /开局/);
+  assert.deepEqual(C.snapshot(s, { hand: true, rivers: 'none' }).selfHand, ['1m', '0p', '?']);
+  s.selfSeat = null; assert.throws(() => C.snapshot(s, { hand: true, rivers: 'none' }), /自家座位/);
+  assert.throws(() => C.snapshot(s, { rivers: 'none' }), /至少/);
+  s.scores.pop(); assert.throws(() => C.snapshot(s, { rivers: '3' }), /有效/);
+  assert.equal(C.snapshot(s, { rivers: 'all' }).rivers.length, 3);
+  assert.throws(() => C.snapshot(S.initial(), { game: true }), /开局/);
 });
 test('endpoint only permits HTTPS and loopback HTTP with explicit completion path', () => {
-  assert.equal(A.permissionOrigin('http://localhost:8000/v1/chat/completions'), 'http://localhost/*');
-  assert.equal(A.permissionOrigin('https://provider.example:8443/v1/chat/completions'), 'https://provider.example/*');
-  for (const url of ['https://example.com/v1/chat/completions', 'http://localhost:8000/v1/chat/completions', 'http://127.0.0.1:8000/chat/completions']) assert.ok(A.endpoint(url));
-  for (const url of ['http://example.com/v1/chat/completions', 'https://user:pass@example.com/chat/completions', 'https://example.com/chat/completions?key=secret', 'https://example.com/v1', 'file:///chat/completions', 'bad']) assert.throws(() => A.endpoint(url));
+  assert.equal(E.permissionOrigin('http://localhost:8000/v1/chat/completions'), 'http://localhost/*');
+  assert.equal(E.permissionOrigin('https://provider.example:8443/v1/chat/completions'), 'https://provider.example/*');
+  for (const url of ['https://example.com/v1/chat/completions', 'http://localhost:8000/v1/chat/completions', 'http://127.0.0.1:8000/chat/completions']) assert.ok(E.endpoint(url));
+  for (const url of ['http://example.com/v1/chat/completions', 'https://user:pass@example.com/chat/completions', 'https://example.com/chat/completions?key=secret', 'https://example.com/v1', 'file:///chat/completions', 'bad']) assert.throws(() => E.endpoint(url));
 });
 function worker(overrides = {}) {
   let listener, changed, requests = [], accessLevel, aborted = false, timeout;
   const config = { enabled: true, model: 'mock-model', endpoint: 'https://provider.example/v1/chat/completions', apiKey: 'test-key', ...overrides.config };
-  const context = { MJAnalysis: A, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
+  const context = { MJAnalysis: A, MJModelEndpoint: E, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
     setTimeout: overrides.manualTimer ? fn => { timeout = fn; return 1; } : setTimeout,
     clearTimeout: overrides.manualTimer ? () => {} : clearTimeout,
     chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config }) }, onChanged: { addListener: fn => { changed = fn; } } },
@@ -52,7 +54,7 @@ function worker(overrides = {}) {
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/background.js'), 'utf8'), context);
   const sender = { id: 'extension-id', tab: { id: 7 }, frameId: 0, url: 'https://game.maj-soul.com/1/' };
   const call = (message, from = sender) => new Promise(resolve => { if (listener(message, from, resolve) !== true) resolve(undefined); });
-  const analyze = (task = 'both', selection = { game: true, hand: true, rivers: 'all' }) => call({ type: 'model:analyze', task, snapshot: A.snapshot(state('live'), selection) });
+  const analyze = (task = 'both', selection = { game: true, hand: true, rivers: 'all' }) => call({ type: 'model:analyze', task, snapshot: C.snapshot(state('live'), selection) });
   return { call, analyze, requests, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
 }
 test('worker authenticates sender, keeps credentials out of status and uses non-streaming bounded request', async () => {
@@ -97,7 +99,7 @@ test('timeout aborts provider request and releases the per-tab request slot', as
 
 function prepared(task = 'combined', selection = { game: true, hand: true, rivers: 'all' }) {
   const s = state('live'); s.selfHand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z','4z'];
-  return A.prepare(A.snapshot(s, selection), task);
+  return A.prepare(C.snapshot(s, selection), task);
 }
 function answer(task = 'combined') {
   return { task, danger: [{ tile: '1m', opponents: [{ seat: 2, level: 'medium', reasons: ['牌河依据有限。'] }] }],
@@ -105,7 +107,7 @@ function answer(task = 'combined') {
 }
 test('task contracts split ordered defensive rivers from efficiency counts and preserve nullable flags', () => {
   const s = state('live'); s.players[2].discards.push({ tile: '9m', tsumogiri: false }); s.players[2].discards.push({ tile: '8m' });
-  const snap = A.snapshot(s, { game: true, hand: true, rivers: 'all' });
+  const snap = C.snapshot(s, { game: true, hand: true, rivers: 'all' });
   assert.deepEqual(snap.rivers[2].discards.map(d => d.tsumogiri), [true, false, null]);
   const danger = A.prepare(snap, 'danger');
   assert.deepEqual(danger.data.danger.rivers[2].discards.map(d => d.tile), ['3p', '9m', '8m']);
@@ -118,7 +120,7 @@ test('task contracts split ordered defensive rivers from efficiency counts and p
   assert.equal(A.prepare(snap, 'both').task, 'combined'); assert.throws(() => A.prepare(snap, 'bad'), /任务/);
 });
 test('prepared data never derives from unselected scopes and strips unsolicited fields', () => {
-  const snap = A.snapshot(state('live'), { rivers: '2', hand: false });
+  const snap = C.snapshot(state('live'), { rivers: '2', hand: false });
   snap.secret = 'PRIVATE'; snap.localAnalysis = { shanten: -99 }; snap.rivers[0].discards[0].instruction = 'SECRET';
   const p = A.prepare(snap, 'efficiency');
   assert.deepEqual(p.data.authorization, { game: false, riverSeats: [2], selfHand: false });
@@ -130,7 +132,7 @@ test('prepared data never derives from unselected scopes and strips unsolicited 
 test('visible counts canonicalize red fives, count north extractions and avoid double counting called discards', () => {
   const s = state('live'); s.players[0].melds = [{ type: 1, tiles: ['3p', '4p', '5p'], froms: [2, 0, 0] }];
   s.players[2].discards[0].called = true; s.players[3].norths = 1;
-  const snap = A.snapshot(s, { game: true, hand: true, rivers: 'all' });
+  const snap = C.snapshot(s, { game: true, hand: true, rivers: 'all' });
   const p = A.prepare(snap, 'efficiency'); const counts = p.data.efficiency.visibleTiles.counts;
   assert.equal(counts['3p'], 1); assert.equal(counts['5p'], 2); assert.equal(counts['4z'], 1);
   assert.deepEqual(A.prepare(snap, 'danger').data.danger.game.players[0].melds[0].froms, [2, 0, 0]);
@@ -165,7 +167,7 @@ test('worker uses separate task prompts, previews actual data and rejects malfor
     assert.equal('efficiency' in data.localAnalysis, task !== 'danger');
     if (task === 'efficiency') assert.equal(JSON.stringify(data).includes('tsumogiri'), false);
     if (task === 'combined') { assert.match(body.messages[0].content, /任务：防守风险分析/); assert.match(body.messages[0].content, /任务：牌效率分析/); }
-    const preview = await w.call({ type: 'model:prepare', task, snapshot: A.snapshot(state('live'), { game: true, hand: true, rivers: 'all' }) });
+    const preview = await w.call({ type: 'model:prepare', task, snapshot: C.snapshot(state('live'), { game: true, hand: true, rivers: 'all' }) });
     assert.deepEqual(preview.data, data); assert.equal(w.requests.length, 1);
   }
   const w = worker({ body: { choices: [{ message: { content: JSON.stringify(answer()) } }] } });
@@ -173,7 +175,7 @@ test('worker uses separate task prompts, previews actual data and rejects malfor
 });
 test('parser prevents discarding before draw, on ended snapshots, unknown riichi draws and false safe claims', () => {
   const s = state('live'); s.selfHand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z'];
-  const prepareState = () => A.prepare(A.snapshot(s, { game: true, hand: true, rivers: 'all' }), 'combined');
+  const prepareState = () => A.prepare(C.snapshot(s, { game: true, hand: true, rivers: 'all' }), 'combined');
   assert.throws(() => A.parseResult(JSON.stringify(answer()), prepareState()));
   s.selfHand.push('4z'); s.phase = 'ended'; assert.throws(() => A.parseResult(JSON.stringify(answer()), prepareState()));
   s.phase = 'playing'; s.players[1].riichi = true;
@@ -187,7 +189,7 @@ test('parser prevents discarding before draw, on ended snapshots, unknown riichi
 
 test('unknown self seat permits general danger evidence for all four visible seats', () => {
   const s = state('live'); s.selfSeat = null; s.players[0].discards = [{ tile: '1m', tsumogiri: true }];
-  const p = A.prepare(A.snapshot(s, { game: true, rivers: 'all' }), 'danger');
+  const p = A.prepare(C.snapshot(s, { game: true, rivers: 'all' }), 'danger');
   assert.equal(p.responseSchema.properties.danger.items.properties.opponents.maxItems, 4);
   const value = { task: 'danger', danger: [{ tile: '1m', opponents: [0,1,2,3].map(seat => ({ seat, level: seat === 0 ? 'safe' : 'unknown', reasons: ['一般危险牌分析。'] })) }], efficiency: [], decision: { action: 'unknown', tile: null, reasons: [] }, limitations: ['未指定自家，不提供弃牌建议。'] };
   assert.deepEqual(A.parseResult(JSON.stringify(value), p), value);

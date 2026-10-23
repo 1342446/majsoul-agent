@@ -1,0 +1,58 @@
+const { test } = require('node:test');
+const assert = require('node:assert/strict');
+const fs = require('node:fs'), vm = require('node:vm');
+const S = require('../extension/state.js'), H = require('../extension/history.js');
+const C = require('../extension/collector/controller.js');
+const B = require('../extension/collector/browser-adapter.js');
+const read = path => fs.readFileSync(require.resolve('../extension/' + path), 'utf8');
+function surface() {
+  const handlers = new Map(), sent = [];
+  const window = { location: { origin: 'https://game.maj-soul.com', href: 'https://game.maj-soul.com/' },
+    localStorage: { getItem: () => null, setItem() {} },
+    addEventListener: (type, fn) => handlers.set(type, fn), removeEventListener: type => handlers.delete(type),
+    postMessage: message => sent.push(message) };
+  return { window, handlers, sent };
+}
+test('browser boundary validates source/origin/envelope, deduplicates, handshakes and releases listener', async () => {
+  const { window, handlers, sent } = surface();
+  const ports = B.create({ window }); const c = C.create({ state: S, history: H, storage: ports.storage });
+  const disconnect = ports.connect(c);
+  assert.equal(sent[0].type, 'hello');
+  const message = { channel: 'mj-observer-v1', epoch: 'test', sequence: 1, type: 'status', payload: { incoming: 7 } };
+  const emit = (more = {}, data = message) => handlers.get('message')({ source: window, origin: window.location.origin, data, ...more });
+  emit({ source: {} }); emit({ origin: 'https://evil.example' });
+  emit({}, { ...message, sequence: '1' }); assert.equal(c.getView().stats.incoming, undefined);
+  emit(); assert.equal(c.getView().stats.incoming, 7);
+  emit({}, { ...message, payload: { incoming: 99 } }); assert.equal(c.getView().stats.incoming, 7);
+  disconnect(); assert.equal(handlers.has('message'), false); await c.ready;
+});
+test('collector composition mounts without loading any model capability', () => {
+  const { window } = surface(); let mounted = 0, configured;
+  const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
+    MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/collector-app.js' }, getElementById: () => null },
+    MJCollectorPanel: { create(options) { configured = options; return { mount() { mounted++; }, destroy() {} }; } } };
+  vm.runInNewContext(read('collector/controller.js'), context);
+  vm.runInNewContext(read('collector/browser-adapter.js'), context);
+  vm.runInNewContext(read('apps/collector-app.js'), context);
+  assert.equal(mounted, 1); assert.equal(configured.title, '雀魂牌局获取器');
+  assert.equal(configured.extensionSlot, undefined); assert.equal(configured.controller.getView().mode, 'live');
+});
+test('agent composition gives panel only selected snapshot provider and display metadata', () => {
+  const { window } = surface(); let configured, mounted;
+  const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
+    MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null },
+    MJCollectorPanel: { create(options) { configured = options; return { mount() {}, destroy() {} }; } },
+    MJCollectorSnapshot: { snapshot(state, selection) { return { phase: state.phase, selected: selection.game }; } },
+    MJAnalysisPanel: { mount(...args) { mounted = args; } } };
+  vm.runInNewContext(read('collector/controller.js'), context);
+  vm.runInNewContext(read('collector/browser-adapter.js'), context);
+  vm.runInNewContext(read('apps/agent-app.js'), context);
+  configured.extensionSlot({}, configured.controller.getView(), () => {});
+  const view = mounted[1]; assert.deepEqual(Object.keys(view).sort(), ['phase','round','seatLabels','snapshot']);
+  assert.deepEqual(view.snapshot({ game: true }), { phase: 'waiting', selected: true });
+  assert.equal(mounted[2].mode, 'live');
+});
+test('presentation module loads with no DOM and never mounts automatically', () => {
+  const context = {}; vm.runInNewContext(read('overlay.js'), context);
+  assert.equal(typeof context.MJCollectorPanel.create, 'function');
+});

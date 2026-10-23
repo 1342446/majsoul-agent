@@ -1,5 +1,5 @@
 'use strict';
-importScripts('mahjong-analysis.js', 'analysis.js');
+importScripts('contracts/snapshot.js', 'adapters/model-endpoint.js', 'mahjong-analysis.js', 'analysis.js');
 importScripts('harness.js', 'agent.js');
 importScripts('history.js', 'history-storage.js');
 const pending = new Map();
@@ -29,8 +29,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (pending.has(key)) throw new Error('已有分析正在进行。');
     const { modelConfig: c } = await chrome.storage.local.get('modelConfig');
     if (!c?.enabled) throw new Error('请先在设置中开启模型分析。');
-    const url = MJAnalysis.endpoint(c.endpoint);
-    if (!await chrome.permissions.contains({ origins: [MJAnalysis.permissionOrigin(url.href)] })) throw new Error('接口访问权限未授予，请重新保存设置。');
+    const url = MJModelEndpoint.endpoint(c.endpoint);
+    if (!await chrome.permissions.contains({ origins: [MJModelEndpoint.permissionOrigin(url.href)] })) throw new Error('接口访问权限未授予，请重新保存设置。');
     if (typeof c.model !== 'string' || !c.model.trim() || c.model.length > 200 || (c.apiKey && typeof c.apiKey !== 'string')) throw new Error('模型配置无效，请重新保存设置。');
     const task = MJAnalysis.normalizeTask(message.task);
     const payload = JSON.stringify(message.snapshot);

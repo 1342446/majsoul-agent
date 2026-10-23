@@ -2,7 +2,7 @@
 
 0.4.0以 **Majsoul Agent** 为整体名称，提供完整版与独立牌局获取器。`extension/agent.js`复用0.3.0分析能力编排任务，`extension/harness.js`负责有界执行、取消和脱敏轨迹；`agent/`提供离线复盘与回归评测。完整说明见 [Agent与harness](docs/AGENT.md)。
 
-这是无构建步骤、无第三方运行依赖的 Manifest V3 扩展。`extension/` 可直接作为解压缩扩展加载。采集、状态、展示和模型网络访问各自独立；新增模型功能复用现有状态，不重新读取或操作游戏。
+这是无第三方运行依赖的 Manifest V3 扩展。`extension/` 可直接加载完整版；`npm run build` 根据显式profiles生成完整版和独立获取器。采集器、标准数据合同、Agent、UI和网络访问通过组合入口接线。
 
 ## 目录与职责
 
@@ -14,16 +14,24 @@
 | `extension/state.js` | 纯状态转换、座风、手牌布局、宝牌和立直推导 | ISOLATED / Node 测试 |
 | `extension/history.js` | 整场与各局记录、快照整理 | ISOLATED / 后台 |
 | `extension/history-storage.js` | 整场记录的本地存储消息处理，与模型配置分键保存 | 扩展 Service Worker |
-| `extension/overlay.js` | 桥接消息校验、实时与牌谱游标、导出、主体面板和刷新节流 | ISOLATED 世界 |
+| `extension/collector/controller.js` | 实时与牌谱状态、游标、历史、订阅、命令和独立导出 | 纯核心 / Node |
+| `extension/collector/browser-adapter.js` | 页面桥接校验、去重、浏览器存储和资源路径端口 | ISOLATED 世界 |
+| `extension/overlay.js` | controller视图展示、命令绑定、刷新节流和可选扩展槽 | ISOLATED 世界 |
+| `extension/contracts/snapshot.js` | 标准授权DTO白名单、牌面规范化和标签 | 纯合同 / Node |
+| `extension/collector/snapshot-adapter.js` | 获取器state与用户选择转换为标准DTO | 纯输入适配 / Node |
+| `extension/apps/collector-app.js` / `agent-app.js` | 创建端口、controller和UI；完整版注入快照适配及分析面板 | 组合入口 |
+| `extension/profiles/agent.json` / `collector.json` | 两种安装配置的脚本顺序、后台、权限和资源入口 | 构建输入 |
 | `extension/mahjong-analysis.js` | 向听、形状进张、已见牌计数和逐对手防守特征 | ISOLATED / 后台 / Node 测试 |
-| `extension/analysis.js` | 授权快照、逐任务合同与提示词、JSON Schema、严格结果校验、接口验证 | ISOLATED / 后台 / 设置 / Node 测试 |
+| `extension/analysis.js` | 标准快照的任务准备、提示词、本地计算准备、JSON Schema和结果校验 | 后台 / 离线预览 / Node |
+| `extension/adapters/model-endpoint.js` | 模型地址校验与主机权限模式 | 后台 / 设置 / Node |
 | `extension/analysis-panel.js` | 数据范围与任务选择、发送预览、结构化牌面建议、本地效率表和过期提示 | ISOLATED 世界 |
 | `extension/background.js` | 身份校验、读取配置、验证授权、添加密钥、调用模型、取消与超时 | 扩展 Service Worker |
 | `extension/agent.js` | 任务计划、已授权快照、本地分析和模型解释工具接线 | 后台 / Node |
 | `extension/harness.js` | 工具注册、步数与时间预算、取消、无内容运行轨迹 | 后台 / Node |
 | `extension/collector-background.js` | 独立获取器的历史存储后台，无模型功能 | Collector Service Worker |
 | `agent/review.cjs` / `agent/eval.cjs` | 按游标的本地复盘、人工回归报告 | Node CLI |
-| `scripts/build-extensions.mjs` | 从共享源码生成完整版与仅获取器两个安装目录 | Node |
+| `scripts/check-boundaries.mjs` | 静态依赖白名单及纯核心能力边界检查 | Node |
+| `scripts/build-extensions.mjs` | 按profiles追踪资源闭包、验证加载顺序、复制安装目录 | Node |
 | `extension/options.html/js/css` | 开关、接口、模型、密钥；主机权限申请、保存与清除 | 扩展设置页 |
 | `extension/tiles/` | 本地牌面资源 | 扩展静态资源 |
 | `tests/` | Node 协议、采集、状态、分析测试与离线浏览器预览 | 本地 |
@@ -37,19 +45,22 @@ flowchart TD
   Game[既有 WebSocket / 牌谱下载] --> Capture[capture.js 旁路观察]
   Capture --> Protocol[protocol.js 归一化]
   Protocol --> Bridge[window.postMessage 仅牌局字段]
-  Bridge --> Overlay[overlay.js 校验并管理事件 / 游标]
-  Overlay --> State[state.js 纯状态转换]
-  State --> UI[原有局面面板]
+  Bridge --> Browser[collector/browser-adapter.js 校验 / 去重]
+  Browser --> Controller[collector/controller.js 状态 / 游标 / 历史]
+  Controller --> State[state.js 纯状态转换]
+  Controller --> UI[overlay.js 采集面板]
   State --> History[history.js 结算快照 / 分场归档]
   History --> HistoryWorker[history-storage.js 校验 / 串行存储]
   HistoryWorker --> HistoryStorage[扩展本地 roundHistoryV1]
   HistoryStorage --> HistoryUI[整场列表 / 历史快照查看]
   HistoryUI --> UI
-  State --> Analysis[analysis.js 按选择生成快照]
-  Analysis --> Panel[analysis-panel.js 预览 / 手动发送]
+  Controller --> Adapter[collector/snapshot-adapter.js]
+  Adapter --> Contract[contracts/snapshot.js 授权 DTO]
+  Contract --> Panel[analysis-panel.js 预览 / 手动发送]
   Options[设置页 开关 / 地址 / 密钥] --> Storage[扩展本地存储]
   Panel --> Worker[background.js 校验与请求]
   Storage --> Worker
+  Worker --> Agent[agent.js / harness.js → analysis.js]
   Worker --> Provider[用户指定的模型接口]
   Provider --> Worker
   Worker --> Result[逐对手风险 / 本地效率表 / 过期标记]
@@ -57,7 +68,9 @@ flowchart TD
 
 MAIN 中的采集器仅观察已有通信，不主动获取牌谱，不调用游戏出牌接口。桥接数据不作为可信来源；模型消息不复用页面的 `postMessage` 通道。
 
-状态机独立于 UI。实时数据和牌谱数据分别维护；牌谱只分析插件当前游标的状态，不分析未来记录。`overlay.js` 每次渲染将当前状态和游标上下文交给分析面板；分析面板保持自己的发送选择、请求状态和结果，并通过快照指纹识别旧结果。
+controller独立于DOM和浏览器API；存储、时钟、ID和hash通过端口注入。实时数据和牌谱数据分别维护，牌谱只分析当前游标的状态。`getView()`和导出返回复制数据，UI修改不会改变内部状态。视图仅提供回放记录数量`recordCount`与有限的`recentEvents`供UI使用，完整记录留在controller和导出边界；`overlay.js`每次渲染只读取一次视图，通过controller命令操作。
+
+`apps/collector-app.js`组装独立获取器；`apps/agent-app.js`在同一采集面板的扩展槽中挂载分析UI，传入`analysisView={snapshot(selection), seatLabels, phase, round}`与游标上下文。分析面板不读取采集器state布局，不导入采集器adapter；它保持授权选择和请求状态，通过快照指纹识别旧结果。销毁组合入口会断开桥接和订阅，并使分析面板的在途响应失效；重新挂载重新读取配置。
 
 ## 历史记录边界
 
@@ -67,7 +80,7 @@ MAIN 中的采集器仅观察已有通信，不主动获取牌谱，不调用游
 
 ## 模型模块边界
 
-内部授权快照保持 `mj-analysis-v1`，后台 `cleanSnapshot()` 再次逐字段清洗后，`prepare()` 生成外发 `mj-analysis-v2`。任务为 `danger`、`efficiency`、`combined`，兼容旧 `discard` / `both`。防守使用有序牌河及 nullable 手摸切；效率只使用自家手牌、副露和已授权已见牌统计；综合任务通过一次模型请求组合两模块输入和提示词。
+标准授权DTO保持 `mj-analysis-v1`。`collector/snapshot-adapter.js`知道获取器state布局，按选择生成DTO；`contracts/snapshot.js`负责独立白名单和规范化。Agent直接调用合同的`cleanSnapshot()`，不认识获取器state、controller或DOM；其他采集器只需提供同样的DTO。`analysis.js`的`prepare()`生成外发 `mj-analysis-v2`。任务为 `danger`、`efficiency`、`combined`，兼容旧 `discard` / `both`。防守使用有序牌河及 nullable 手摸切；效率只使用自家手牌、副露和已授权已见牌统计；综合任务通过一次模型请求组合两模块输入和提示词。
 
 `MJMahjongAnalysis.analyze()` 仅接收清洗后的快照。`localAnalysis` 按任务挑选防守或效率结果；后台忽略页面消息自带的本地计算字段，重新计算。算法和合同采用有界缓存，预览通过 `model:prepare` 在后台异步计算，避免界面刷新阻塞游戏线程。后台请求和预览共用 `prepare()` 的真实数据。普通型、七对子、国士向听及有效牌由本地计算，未见枚数为上界，模型只作解释。
 
@@ -82,6 +95,10 @@ MAIN 中的采集器仅观察已有通信，不主动获取牌谱，不调用游
 
 ## 变更与验证
 
-协议变更修改 `protocol.js` 并补人工协议帧；采集兼容性修改 `capture.js`；局面规则和推导修改 `state.js`。新增发送字段应先修改 `analysis.js` 的显式合同和测试；新模型协议应在后台适配，不将密钥或网络调用移入页面脚本。
+协议变更修改 `protocol.js` 并补人工协议帧；采集兼容性修改 `capture.js`；局面规则和推导修改 `state.js`。新增发送字段应先修改 `contracts/snapshot.js` 的显式合同和测试，再修改需要该字段的输入adapter；新模型协议应在后台适配，不将密钥或网络调用移入页面脚本。
+
+`npm run check`检查源码语法、依赖白名单、纯核心禁止浏览器能力及profiles。构建从显式入口追踪脚本和页面资源闭包，验证内容脚本、worker和设置页的加载顺序；agent profile须与默认manifest一致，collector闭包不得包含分析或模型文件。检查器支持本项目的静态引用，不是通用JavaScript解析器；新增项目全局或加载方式需同步检查规则。两个安装目录由依赖闭包复制生成，不修改共享UI源码。
+
+检查规则、依赖方向和静态扫描局限见[可执行的模块边界](docs/DECOUPLING.md)。
 
 运行 `npm test`。分析测试通过 VM 中的模拟 Chrome API 和模拟 HTTP 响应覆盖开关、授权、身份、请求、错误与取消，不连接真实模型。`tests/preview.html` 用于离线界面验证，不代表真实协议采集或模型正确率。版本验证记录见 `VALIDATION.md`。

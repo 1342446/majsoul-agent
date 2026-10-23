@@ -19,7 +19,15 @@ test('collector installs without model files, optional model hosts or settings; 
     const manifest = JSON.parse(readFileSync(join(collector, 'manifest.json')));
     assert.equal('options_ui' in manifest, false); assert.equal('optional_host_permissions' in manifest, false);
     assert.deepEqual(manifest.permissions, ['storage']);
-    for (const script of ['analysis.js', 'analysis-panel.js', 'mahjong-analysis.js', 'agent.js', 'harness.js', 'background.js', 'options.html']) {
+    for (const file of ['collector/controller.js', 'collector/browser-adapter.js', 'overlay.js']) {
+      assert.ok(existsSync(join(collector, file)), file);
+      assert.ok(existsSync(join(agent, file)), file);
+    }
+    assert.ok(existsSync(join(collector, 'apps/collector-app.js')));
+    assert.equal(existsSync(join(collector, 'apps/agent-app.js')), false);
+    assert.ok(existsSync(join(agent, 'apps/agent-app.js')));
+    assert.equal(existsSync(join(agent, 'apps/collector-app.js')), false);
+    for (const script of ['contracts/snapshot.js', 'collector/snapshot-adapter.js', 'adapters/model-endpoint.js', 'analysis.js', 'analysis-panel.js', 'mahjong-analysis.js', 'agent.js', 'harness.js', 'background.js', 'options.html']) {
       assert.equal(existsSync(join(collector, script)), false, script);
       assert.ok(existsSync(join(agent, script)), script);
     }

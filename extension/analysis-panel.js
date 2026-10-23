@@ -3,11 +3,11 @@
   const available = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
   const selection = { game: true, rivers: 'all', hand: false };
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false;
-  let current, context, repaint, requestId = 0;
+  let current, context, repaint, requestId = 0, lifecycle = 0, connected = false;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tileBase = available ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
-  const face = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t) ? `<img class="analysis-tile" src="${escape(tileBase + t + '.svg')}" alt="${escape(__MJ_OBSERVER_STATE_V1__.label(t))}" title="${escape(__MJ_OBSERVER_STATE_V1__.label(t))}">` : escape(t);
+  const face = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t) ? `<img class="analysis-tile" src="${escape(tileBase + t + '.svg')}" alt="${escape(MJSnapshotContract.label(t))}" title="${escape(MJSnapshotContract.label(t))}">` : escape(t);
   const reasons = values => (values || []).map(escape).join('；');
   const actionNames = { attack: '进攻', defend: '回避', fold: '弃和', unknown: '暂无法判断' };
   const riskNames = { safe: '现物', low: '较低', medium: '中等', high: '较高', unknown: '未知' };
@@ -29,35 +29,55 @@
       ${e.reasons?.length ? `<p>${reasons(e.reasons)}</p>` : ''}
       <table><thead><tr><th>弃牌</th><th>向听</th><th>有效牌 / 未见上界</th><th>合计上界</th></tr></thead><tbody>${e.candidates.map(entry).join('')}${e.current ? entry(e.current) : ''}</tbody></table><p class="muted">未见枚数为上界，不代表牌山剩余枚数。${e.visibleTiles.partial ? '已见牌范围不完整。' : ''}</p>`;
   }
-  function snapshot() { return MJAnalysis.snapshot(current, selection); }
+  function snapshot() { return current.snapshot(selection); }
   let preparationKey = '', preparation = null, preparationError = '', preparationBusy = false;
   function requestPreparation(data) {
-    const taskAtRequest = task, key = JSON.stringify([taskAtRequest, data]);
+    const generation = lifecycle, taskAtRequest = task, key = JSON.stringify([taskAtRequest, data]);
     if (key === preparationKey) return;
     preparationKey = key; preparation = null; preparationError = ''; preparationBusy = true;
     const pending = available ? send({ type: 'model:prepare', task: taskAtRequest, snapshot: data }) : new Promise(resolve => setTimeout(() => {
       try { resolve({ ok: true, data: MJAnalysis.prepare(data, taskAtRequest).data }); } catch (e) { resolve({ ok: false, error: e.message }); }
     }, 0));
-    pending.then(response => { if (key !== preparationKey) return;
+    pending.then(response => { if (key !== preparationKey || generation !== lifecycle) return;
       if (!response?.ok) preparationError = response?.error || '无法整理局面数据。'; else preparation = response.data;
-    }).catch(e => { if (key === preparationKey) preparationError = e.message; }).finally(() => { if (key === preparationKey) { preparationBusy = false; repaint?.(); } });
+    }).catch(e => { if (key === preparationKey && generation === lifecycle) preparationError = e.message; }).finally(() => { if (key === preparationKey && generation === lifecycle) { preparationBusy = false; repaint?.(); } });
   }
   function fingerprint() { try { return JSON.stringify({ task, context, round: current.round, phase: current.phase, snapshot: snapshot() }); } catch (_) { return ''; } }
   async function refresh() {
     if (!available) return;
+    const generation = lifecycle;
     try { const status = await send({ type: 'model:status' });
+      if (generation !== lifecycle) return;
       if (enabled !== !!status?.enabled) result = null;
       enabled = !!status?.enabled; }
-    catch (_) { enabled = false; }
+    catch (_) { if (generation !== lifecycle) return; enabled = false; }
     repaint?.();
   }
-  if (available) {
-    chrome.storage.onChanged.addListener((changes, area) => { if (area === 'local' && changes.modelConfig) { requestId++; busy = false; result = null; send({ type: 'model:cancel' }).catch(() => {}); refresh(); } });
+  function configChanged(changes, area) {
+    if (area === 'local' && changes.modelConfig) { requestId++; busy = false; result = null; send({ type: 'model:cancel' }).catch(() => {}); refresh(); }
+  }
+  function connect() {
+    if (!available || connected) return;
+    connected = true;
+    chrome.storage.onChanged.addListener(configChanged);
     window.addEventListener('focus', refresh);
     refresh();
   }
-  function mount(container, state, position, render) {
-    current = state; context = position; repaint = render;
+  function destroy() {
+    lifecycle++; requestId++;
+    if (available && connected) {
+      chrome.storage.onChanged.removeListener(configChanged);
+      window.removeEventListener('focus', refresh);
+      if (busy) send({ type: 'model:cancel' }).catch(() => {});
+    }
+    connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false;
+    current = null; context = null; repaint = null;
+    preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
+    selection.game = true; selection.rivers = 'all'; selection.hand = false; task = 'combined';
+  }
+  function mount(container, analysisView, position, render) {
+    current = analysisView; context = position; repaint = render;
+    connect();
     const stale = result && result.fingerprint !== fingerprint();
     let payload = '', error = '';
     try { const raw = snapshot(); if (preview) requestPreparation(raw); payload = preparation ? JSON.stringify(preparation, null, 2) : '正在整理实际发送的数据…'; } catch (e) { error = e.message; }
@@ -68,7 +88,7 @@
       <p class="muted">${!available ? '离线演示不发送模型请求。' : enabled ? '已开启 · 仅点击分析时发送所选数据' : '默认关闭 · 在设置中接入自己的模型'}</p>
       <div class="controls"><button id="model-settings" ${!available ? 'disabled' : ''}>模型设置</button><button id="model-refresh" ${!available ? 'disabled' : ''}>刷新设置状态</button></div>
       <label><input id="model-game" type="checkbox" ${selection.game ? 'checked' : ''}> 对局信息（点数、宝牌、副露、立直等，不含牌河和手牌）</label>
-      <label>发送牌河 <select id="model-rivers"><option value="none">不发送</option><option value="all">所有玩家</option>${state.players.slice(0, state.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}">${escape(__MJ_OBSERVER_STATE_V1__.seatWind(state, i))}家 · 座位 ${i}</option>`).join('')}</select></label>
+      <label>发送牌河 <select id="model-rivers"><option value="none">不发送</option><option value="all">所有玩家</option>${current.seatLabels.map((label, i) => `<option value="${i}">${escape(label)}</option>`).join('')}</select></label>
       <label><input id="model-hand" type="checkbox" ${selection.hand ? 'checked' : ''}> 自家手牌（需先选定自家座位）</label>
       <label>分析内容 <select id="model-task"><option value="combined">综合攻守</option><option value="danger">危险牌</option><option value="efficiency">牌效率</option></select></label>
       ${error ? `<p class="warn">${escape(error)}</p>` : ''}
@@ -95,7 +115,7 @@
       if (!event.isTrusted) return;
       const id = ++requestId;
       try {
-        const data = snapshot(), captured = fingerprint(), seatLabels = current.players.map((_, seat) => __MJ_OBSERVER_STATE_V1__.seatWind(current, seat) + '家 · 座位 ' + seat); busy = true; failure = ''; result = null; render();
+        const data = snapshot(), captured = fingerprint(), seatLabels = current.seatLabels.slice(); busy = true; failure = ''; result = null; render();
         const response = await send({ type: 'model:analyze', task, snapshot: data });
         if (id !== requestId) return;
         if (!response?.ok) throw new Error(response?.error || '模型请求失败，请刷新设置状态后重试。');
@@ -104,5 +124,5 @@
       finally { if (id === requestId) { busy = false; render(); } }
     };
   }
-  globalThis.MJAnalysisPanel = { mount };
+  globalThis.MJAnalysisPanel = { mount, destroy };
 })();

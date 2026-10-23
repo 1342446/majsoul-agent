@@ -35,6 +35,8 @@ def allowed_files():
         for path in sorted((ROOT / directory).rglob('*')):
             if '__pycache__' in path.parts:
                 continue
+            if any(part in {'.git', 'research', 'node_modules', 'dist'} for part in path.relative_to(ROOT).parts):
+                raise ValueError('Excluded private/generated directory: ' + path.relative_to(ROOT).as_posix())
             if path.is_symlink():
                 raise ValueError('Symlinks are not allowed: ' + path.relative_to(ROOT).as_posix())
             if path.is_file():

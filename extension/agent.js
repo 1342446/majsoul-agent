@@ -2,16 +2,17 @@
 (function (root) {
   'use strict';
   const A = typeof module !== 'undefined' && module.exports ? require('./analysis.js') : root.MJAnalysis;
+  const C = typeof module !== 'undefined' && module.exports ? require('./contracts/snapshot.js') : root.MJSnapshotContract;
   const H = typeof module !== 'undefined' && module.exports ? require('./harness.js') : root.MJHarness;
   async function run({ snapshot, task = 'combined', explain, localOnly = false, signal, timeoutMs, onEvent }) {
     task = A.normalizeTask(task);
     if (!localOnly && typeof explain !== 'function') throw new Error('A model transport is required');
     // Freeze the input in time before any asynchronous tool can run.
-    const input = A.cleanSnapshot(snapshot);
+    const input = C.cleanSnapshot(snapshot);
     const steps = ['snapshot.validate', 'analysis.prepare'];
     if (!localOnly) steps.push('model.explain', 'result.validate');
     const tools = {
-      'snapshot.validate': value => A.cleanSnapshot(value),
+      'snapshot.validate': value => C.cleanSnapshot(value),
       'analysis.prepare': value => A.prepare(value, task),
       'model.explain': async (prepared, context) => ({ prepared, content: await explain(prepared, context) }),
       'result.validate': ({ prepared, content }) => ({ result: A.parseResult(content, prepared), prepared })

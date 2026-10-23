@@ -1,3 +1,5 @@
+import { checkProfiles } from './build-extensions.mjs';
+import { jsFiles } from './check-boundaries.mjs';
 import { readFileSync, readdirSync, existsSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { join } from 'node:path';
@@ -11,7 +13,8 @@ for (const group of manifest.content_scripts) for (const path of group.js) {
   if (!existsSync(join(root, 'extension', path))) throw new Error('Missing script: ' + path);
 }
 if (!existsSync(join(root, 'extension', manifest.background.service_worker))) throw new Error('Missing worker');
-for (const file of readdirSync(join(root, 'extension')).filter(name => name.endsWith('.js'))) {
+checkProfiles();
+for (const file of jsFiles(join(root, 'extension'))) {
   execFileSync(process.execPath, ['--check', join(root, 'extension', file)]);
 }
 for (const file of (existsSync(join(root, 'agent')) ? readdirSync(join(root, 'agent')) : []).filter(name => name.endsWith('.cjs'))) {

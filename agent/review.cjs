@@ -1,7 +1,7 @@
 'use strict';
 const fs = require('node:fs');
 const S = require('../extension/state.js');
-const A = require('../extension/analysis.js');
+const CollectorSnapshot = require('../extension/collector/snapshot-adapter.js');
 const Agent = require('../extension/agent.js');
 
 async function review(observation, { seat, cursor, hand = false, task = 'combined' } = {}) {
@@ -35,7 +35,7 @@ async function review(observation, { seat, cursor, hand = false, task = 'combine
     if (seat !== undefined) state = S.selectSelfSeat(state, seat);
     provenance = { mode: 'live', cursor: null, appliedEvents: null };
   } else throw new Error('Unknown collector source');
-  const snapshot = A.snapshot(state, { game: true, rivers: 'all', hand });
+  const snapshot = CollectorSnapshot.snapshot(state, { game: true, rivers: 'all', hand });
   const result = await Agent.run({ snapshot, task, localOnly: true });
   return { format: 'majsoul-review-v1', provenance, ...result };
 }

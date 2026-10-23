@@ -31,6 +31,8 @@
 
 同一游戏页面只启用其中一个版本。获取器可以独立使用，导出记录再交给离线复盘工具；两种扩展的本地存储独立，不自动迁移。源码中的 `extension/` 为完整版；运行 `npm run build` 会生成两种可加载目录。
 
+两版使用独立的`extension/profiles/agent.json`和`collector.json`，分别加载`apps/agent-app.js`与`apps/collector-app.js`组合入口。构建按依赖闭包生成`dist/majsoul-agent-0.4.0/`和`dist/majsoul-collector-0.4.0/`，可直接加载其中一个目录；获取器包仅包含采集、展示、历史与导出所需文件。
+
 1. 下载源码 ZIP 并解压，或克隆仓库。源码方式选择其中的 **`extension/` 文件夹**。
 2. Edge 打开 `edge://extensions`；Chrome 打开 `chrome://extensions`，开启“开发者模式”。
 3. 点击“加载已解压的扩展程序”，选择上述文件夹。若使用专用扩展安装 ZIP，选择解压后直接含 `manifest.json` 的文件夹。
@@ -42,6 +44,8 @@
 目前仅匹配 `https://game.maj-soul.com/*`。Firefox、Safari、Steam 桌面端和其他地区域名尚未适配；Chrome、Brave 等浏览器的架构兼容性不等于已完成实际验证。
 
 ## Agent 与 harness
+
+获取器的controller负责局面、游标、历史和导出，UI通过视图和命令与它交互。独立adapter把用户选择映射为`mj-analysis-v1`标准DTO，Agent直接依赖纯数据合同，不读取获取器state布局。其他采集器可提供相同DTO；分析面板只接收快照函数和展示信息。组合入口负责连接各组件，详见[解耦设计](docs/DECOUPLING.md)和[架构](ARCHITECTURE.md)。
 
 Agent把危险牌、牌效率和综合攻守任务映射到有界工作流；harness执行已注册工具、限制步数与时间、传递取消信号并生成不含牌局内容或密钥的运行记录。完整版实际调用路径为“快照校验 → 本地分析与提示词准备 → 模型解释 → 结果校验”，成功后可展开“Agent运行记录”。当前采用固定计划，每次最多一次模型请求，不具备模型自主选工具或无限重试能力。
 
@@ -96,7 +100,10 @@ Node.js 22 或更新版本即可运行检查，无需安装运行依赖：
 ```sh
 npm run check
 npm test
+npm run build
 ```
+
+`check`验证静态依赖边界、纯核心不使用浏览器能力、两种profile资源完整性及加载顺序；`build`按各profile的依赖闭包复制安装文件，不修改共享UI源码。它们不能替代真实游戏协议或模型质量验证。
 
 用任意本地静态服务器打开 `tests/preview.html` 可查看离线演示。例如安装了 Python 时：
 

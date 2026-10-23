@@ -32,10 +32,15 @@
       "js": [
         "state.js",
         "history.js",
+        "collector/controller.js",
+        "collector/browser-adapter.js",
+        "contracts/snapshot.js",
+        "collector/snapshot-adapter.js",
         "mahjong-analysis.js",
         "analysis.js",
         "analysis-panel.js",
-        "overlay.js"
+        "overlay.js",
+        "apps/agent-app.js"
       ],
       "run_at": "document_start",
       "world": "ISOLATED"
