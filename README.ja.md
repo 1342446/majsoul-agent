@@ -1,4 +1,4 @@
-# Majsoul Agent · 雀魂の分析と振り返り
+# Majsoul AI Analysis & Review Agent · 雀魂の分析と振り返り
 
 [简体中文](README.md) | [English](README.en.md) | **日本語**
 
@@ -10,7 +10,7 @@
 
 本書は **0.4.0** の説明です。0.3.0の分析機能に、独立したAgent層、harness、取得専用の配布版を追加しています。両方の配布構成を独立したEdge・Chrome環境に読み込み、人工の対局データで動作を確認しました。現行Unityクライアントへの完全対応、再接続時の復元、実際のモデルの助言品質は未検証です。実戦での認識精度や雀力は保証していません。
 
-管理先は[1342446/majsoul-agent](https://github.com/1342446/majsoul-agent)に統一し、機密情報等を除去した元の非公開リポジトリの開発履歴をすべて保持しています。[履歴移行の説明](docs/HISTORY.md)（中国語）を参照してください。
+管理先は[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)に統一し、機密情報等を除去した元の非公開リポジトリの開発履歴をすべて保持しています。[履歴移行の説明](docs/HISTORY.md)（中国語）を参照してください。
 
 ![人工の局面とモデル応答を使ったフローティング分析カード](docs/images/agent-floating-preview.png)
 
@@ -29,18 +29,18 @@
 
 | パッケージ | 機能 |
 | --- | --- |
-| `majsoul-agent-0.4.0.zip` | 取得・表示・履歴・Agent・モデル設定・harnessの実行記録 |
+| `majsoul-ai-analysis-and-review-agent-0.4.0.zip` | 取得・表示・履歴・Agent・モデル設定・harnessの実行記録 |
 | `majsoul-collector-0.4.0.zip` | 取得・表示・履歴・エクスポートのみ。モデル用コード、設定画面、モデル接続先への権限は含みません |
 
 同じゲームページでは一方のみを有効にしてください。取得専用版は単独で使用でき、記録を出力してオフラインで振り返れます。両版のローカル保存領域は独立しており、自動移行はしません。ソースの `extension/` は完全版です。`npm run build` で両方の読み込み可能なフォルダーを生成できます。
 
-独立した`extension/profiles/agent.json`と`collector.json`が、それぞれ`apps/agent-app.js`と`apps/collector-app.js`を組み合わせの入口として指定します。ビルドは各profileの依存関係をたどり、`dist/majsoul-agent-0.4.0/`と`dist/majsoul-collector-0.4.0/`を生成します。どちらかのフォルダーを直接読み込めます。取得専用版には分析モジュール自体を含めません。
+独立した`extension/profiles/agent.json`と`collector.json`が、それぞれ`apps/agent-app.js`と`apps/collector-app.js`を組み合わせの入口として指定します。ビルドは各profileの依存関係をたどり、`dist/majsoul-ai-analysis-and-review-agent-0.4.0/`と`dist/majsoul-collector-0.4.0/`を生成します。どちらかのフォルダーを直接読み込めます。取得専用版には分析モジュール自体を含めません。
 
 1. ソース ZIP をダウンロードして展開するか、リポジトリをクローンします。ソースの場合は **`extension/` フォルダー** を使用します。
 2. Edge で `edge://extensions`、Chrome で `chrome://extensions` を開き、デベロッパーモードを有効にします。
 3. 展開済みの拡張機能を読み込む操作で、そのフォルダーを選択します。拡張機能専用 ZIP の場合は、展開後に `manifest.json` が直接入っているフォルダーを選びます。
 4. ゲームへの接続前に収集処理が読み込まれるよう、雀魂のページを再読み込みしてから対局に入るか、牌譜を開き直します。
-5. 完全版は右側に独立した `Majsoul Agent` カード、左側に折りたたまれた `牌局` の入口を表示します。取得専用版は左側の入口のみです。それぞれドラッグでき、位置を別々に保存します。最近のイベントと取得状況も初期状態では折りたたまれています。
+5. 完全版は右側に独立した `Majsoul AI Analysis & Review Agent` カード、左側に折りたたまれた `牌局` の入口を表示します。取得専用版は左側の入口のみです。それぞれドラッグでき、位置を別々に保存します。最近のイベントと取得状況も初期状態では折りたたまれています。
 
 更新後は拡張機能の管理画面で再読み込みし、続いてゲームを再読み込みしてください。ゲームの再読み込みで牌譜の再生位置はリセットされます。既存の接続や取得済みの牌譜データを後からさかのぼって読み取ることはできません。
 

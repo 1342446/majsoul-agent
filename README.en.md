@@ -1,4 +1,4 @@
-# Majsoul Agent · Mahjong analysis and review
+# Majsoul AI Analysis & Review Agent · Mahjong analysis and review
 
 [简体中文](README.md) | **English** | [日本語](README.ja.md)
 
@@ -10,7 +10,7 @@ These language links switch the documentation only. The extension UI is currentl
 
 This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
 
-The project is maintained at [1342446/majsoul-agent](https://github.com/1342446/majsoul-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
+The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
 ![Floating analysis card with synthetic game data and model output](docs/images/agent-floating-preview.png)
 
@@ -29,18 +29,18 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 | Package | Capabilities |
 | --- | --- |
-| `majsoul-agent-0.4.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
+| `majsoul-ai-analysis-and-review-agent-0.4.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
 | `majsoul-collector-0.4.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
 
 Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
 
-The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-agent-0.4.0/` and `dist/majsoul-collector-0.4.0/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
+The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-ai-analysis-and-review-agent-0.4.0/` and `dist/majsoul-collector-0.4.0/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
 
 1. Download and extract the source ZIP, or clone the repository. For a source checkout, use the **`extension/` directory**.
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.
 3. Choose **Load unpacked** and select that directory. For the dedicated extension ZIP, select the extracted directory that directly contains `manifest.json`.
 4. Refresh the Mahjong Soul page so the collector loads before the game connection is established, then enter a game or reopen a replay.
-5. The full edition shows a separate `Majsoul Agent` card on the right and a collapsed `牌局` collector entry on the left. The collector-only edition shows the left entry. Drag either title to move it; positions are saved independently. Recent events and collection status start collapsed.
+5. The full edition shows a separate `Majsoul AI Analysis & Review Agent` card on the right and a collapsed `牌局` collector entry on the left. The collector-only edition shows the left entry. Drag either title to move it; positions are saved independently. Recent events and collection status start collapsed.
 
 After updating, reload the extension in the browser’s extension manager, then refresh the game. Refreshing resets your replay position. Existing connections and previously downloaded replay data cannot be read retroactively.
 

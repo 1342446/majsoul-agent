@@ -1,5 +1,11 @@
 # 更新记录
 
+## 未发布 — 项目名称明确化
+
+- 仓库统一命名为 `majsoul-ai-analysis-and-review-agent`，项目标题为 **Majsoul AI Analysis & Review Agent · 雀魂 AI 牌局分析与复盘助手**。
+- 同步三语介绍、仓库链接、扩展显示名称、完整版与源码包名称；仅获取器包仍使用 `majsoul-collector`。
+- 直接重命名现有公开仓库，完整开发历史继续保留。
+
 ## 未发布 — 可选 NAGA 牌谱导出
 
 - 完整版增加默认关闭的 NAGA 牌谱入口：用户确认规则后，本地转换完整牌谱为逐局 Tenhou URL，支持选局预览、复制和下载，并提供固定官方提交页链接。

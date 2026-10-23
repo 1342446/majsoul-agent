@@ -72,7 +72,7 @@ export function buildExtensions(destination = join(root, 'dist')) {
   const source = join(root, 'extension'), profiles = checkProfiles(source), outputs = [];
   mkdirSync(destination, { recursive: true });
   for (const { name, manifest, files } of profiles) {
-    const directory = join(destination, `majsoul-${name}-${manifest.version}`);
+    const directory = join(destination, `${name === 'agent' ? json(join(root, 'package.json')).name : 'majsoul-collector'}-${manifest.version}`);
     if (existsSync(directory)) renameSync(directory, directory + '.previous-' + Date.now());
     mkdirSync(directory);
     for (const file of files) { mkdirSync(join(directory, posix.dirname(file)), { recursive: true }); cpSync(join(source, file), join(directory, file)); }

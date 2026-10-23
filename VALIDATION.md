@@ -1,5 +1,12 @@
 # 版本验证记录
 
+## 项目与账号名称同步（2026-10-23）
+
+- GitHub现有公开仓库直接改名为 `oreki-L/majsoul-ai-analysis-and-review-agent`，原有15个提交继续保留，新的名称同步提交追加在其后。
+- 三语介绍、克隆链接、扩展名称、设置页与分析卡标题、完整版／源码包名称和打包脚本同步；本地origin使用新地址。
+- `npm run check`、两种profile构建及 `python scripts/package-public.py` 通过；打包过程运行的224项测试全部通过，生成新名称的源码、完整版及独立获取器ZIP。
+- Edge离线演示核对分析卡显示完整英文标题，标题与标题栏宽度未溢出；该检查不连接游戏账号。
+
 ## 可选 NAGA 牌谱导出（2026-10-23，未发布）
 
 - 协议定向回归 `node --test tests/protocol.test.js tests/naga-protocol.test.js`：16/16通过。人工 protobuf 覆盖役种标签限长、里宝牌、支付点数缺失为 `null`、役满／包牌标志、多和牌不伪造逐赢家分差、荒牌流局结算证据、特殊流局标志、隐私字段过滤、live 输出保持及 LLM snapshot 隔离。

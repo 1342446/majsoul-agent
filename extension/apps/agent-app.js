@@ -11,7 +11,7 @@
     } });
     const hintHooks = { onHints: value => hints.update(value) };
     const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: true });
-    const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul Agent', positionKey: 'mj-agent-panel-position-v1',
+    const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul AI Analysis & Review Agent', positionKey: 'mj-agent-panel-position-v1',
       onRender(container, render) {
         const view = controller.getView(), state = view.state, S = root.__MJ_OBSERVER_STATE_V1__;
         const selfHand = (state.source === 'replay' ? state.players[state.selfSeat]?.hand : state.selfHand) || [];

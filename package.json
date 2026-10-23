@@ -1,8 +1,8 @@
 {
-  "name": "majsoul-agent",
+  "name": "majsoul-ai-analysis-and-review-agent",
   "private": true,
   "version": "0.4.0",
-  "description": "Browser-based Mahjong Soul observation, local round history and opt-in model analysis.",
+  "description": "Mahjong Soul game observation, AI analysis and replay review with user-configured model APIs and optional mahjong engines.",
   "license": "MIT",
   "engines": { "node": ">=22" },
   "scripts": {

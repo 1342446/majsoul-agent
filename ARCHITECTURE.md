@@ -1,6 +1,6 @@
 # 项目架构
 
-0.4.0以 **Majsoul Agent** 为整体名称，提供完整版与独立牌局获取器。`extension/agent.js`复用0.3.0分析能力编排任务，`extension/harness.js`负责有界执行、取消和脱敏轨迹；`agent/`提供离线复盘与回归评测。完整说明见 [Agent与harness](docs/AGENT.md)。
+0.4.0以 **Majsoul AI Analysis & Review Agent** 为整体名称，提供完整版与独立牌局获取器。`extension/agent.js`复用0.3.0分析能力编排任务，`extension/harness.js`负责有界执行、取消和脱敏轨迹；`agent/`提供离线复盘与回归评测。完整说明见 [Agent与harness](docs/AGENT.md)。
 
 这是无第三方运行依赖的 Manifest V3 扩展。`extension/` 可直接加载完整版；`npm run build` 根据显式profiles生成完整版和独立获取器。采集器、标准数据合同、Agent、UI和网络访问通过组合入口接线。
 

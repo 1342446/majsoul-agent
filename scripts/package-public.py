@@ -128,14 +128,14 @@ def main(output=None):
     output = output or ROOT / 'dist'
     output.mkdir(exist_ok=True)
     agent_project = (ROOT / 'extension/agent.js').is_file()
-    project = 'majsoul-agent' if agent_project else 'majsoul-observer'
+    project = package['name'] if agent_project else 'majsoul-observer'
     source = output / (project + '-source-' + version + '.zip')
     write_zip(source, [(path, project + '/' + path.relative_to(ROOT).as_posix()) for path in files])
     archives = [source]
     if agent_project:
         subprocess.run(['node', str(ROOT / 'scripts/build-extensions.mjs'), str(output)], check=True)
         for profile in ['agent', 'collector']:
-            directory = output / ('majsoul-' + profile + '-' + version)
+            directory = output / ((project if profile == 'agent' else 'majsoul-collector') + '-' + version)
             archive = Path(str(directory) + '.zip')
             write_zip(archive, [(path, path.relative_to(directory).as_posix()) for path in directory.rglob('*') if path.is_file()])
             archives.append(archive)

@@ -1,4 +1,6 @@
-# Majsoul Agent · 雀魂分析与复盘
+# Majsoul AI Analysis & Review Agent
+
+雀魂 AI 牌局分析与复盘助手
 
 **简体中文** | [English](README.en.md) | [日本語](README.ja.md)
 
@@ -10,7 +12,7 @@
 
 当前为 **0.4.0**。复用0.3.0的分析模块，加入独立Agent执行层、harness与仅获取器分发。两种安装组合已在独立Edge与Chrome环境中通过人工牌局模拟验收。当前Unity客户端的完整实时协议、断线恢复及真实模型建议质量仍待验证；项目不宣称实战识别正确率或牌力水平。
 
-项目统一维护于[1342446/majsoul-agent](https://github.com/1342446/majsoul-agent)，保留经过敏感内容清理的完整原私有开发历史，详见[历史迁移说明](docs/HISTORY.md)。
+项目统一维护于[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)，保留经过敏感内容清理的完整原私有开发历史，详见[历史迁移说明](docs/HISTORY.md)。
 
 ![自由悬浮分析卡，使用人工局面与模型响应](docs/images/agent-floating-preview.png)
 
@@ -31,18 +33,18 @@
 
 | 安装包 | 提供的能力 |
 | --- | --- |
-| `majsoul-agent-0.4.0.zip` | 获取器、局面面板、结算历史、Agent、模型设置与harness运行记录 |
+| `majsoul-ai-analysis-and-review-agent-0.4.0.zip` | 获取器、局面面板、结算历史、Agent、模型设置与harness运行记录 |
 | `majsoul-collector-0.4.0.zip` | 仅采集、展示、历史与导出；不含模型代码、设置页或模型主机权限 |
 
 同一游戏页面只启用其中一个版本。获取器可以独立使用，导出记录再交给离线复盘工具；两种扩展的本地存储独立，不自动迁移。源码中的 `extension/` 为完整版；运行 `npm run build` 会生成两种可加载目录。
 
-两版使用独立的`extension/profiles/agent.json`和`collector.json`，分别加载`apps/agent-app.js`与`apps/collector-app.js`组合入口。构建按依赖闭包生成`dist/majsoul-agent-0.4.0/`和`dist/majsoul-collector-0.4.0/`，可直接加载其中一个目录；获取器包仅包含采集、展示、历史与导出所需文件。
+两版使用独立的`extension/profiles/agent.json`和`collector.json`，分别加载`apps/agent-app.js`与`apps/collector-app.js`组合入口。构建按依赖闭包生成`dist/majsoul-ai-analysis-and-review-agent-0.4.0/`和`dist/majsoul-collector-0.4.0/`，可直接加载其中一个目录；获取器包仅包含采集、展示、历史与导出所需文件。
 
 1. 下载源码 ZIP 并解压，或克隆仓库。源码方式选择其中的 **`extension/` 文件夹**。
 2. Edge 打开 `edge://extensions`；Chrome 打开 `chrome://extensions`，开启“开发者模式”。
 3. 点击“加载已解压的扩展程序”，选择上述文件夹。若使用专用扩展安装 ZIP，选择解压后直接含 `manifest.json` 的文件夹。
 4. 刷新雀魂网页，让采集器在游戏连接建立前加载，再进入牌局或重新打开牌谱。
-5. 完整版右侧出现独立“Majsoul Agent”分析卡，左侧“牌局”入口默认收起；仅获取器版显示左侧入口。两者均可拖动，独立记住位置。“最近事件”和“采集状态”默认折叠。
+5. 完整版右侧出现独立“Majsoul AI Analysis & Review Agent”分析卡，左侧“牌局”入口默认收起；仅获取器版显示左侧入口。两者均可拖动，独立记住位置。“最近事件”和“采集状态”默认折叠。
 
 更新源码后，先在扩展管理页“重新加载”，再刷新游戏。刷新会离开当前回放位置，已有连接或已下载牌谱无法追溯读取。
 

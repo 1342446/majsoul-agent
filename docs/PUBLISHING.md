@@ -1,10 +1,10 @@
 # 公开与打包
 
-Majsoul Agent的源码可用于生成完整版和仅获取器。打包脚本不提交、推送、创建仓库或修改仓库可见性。
+Majsoul AI Analysis & Review Agent的源码可用于生成完整版和仅获取器。打包脚本不提交、推送、创建仓库或修改仓库可见性。
 
 ## 当前状态
 
-项目统一维护于[1342446/majsoul-agent](https://github.com/1342446/majsoul-agent)。公开Git历史保留原私有仓库的全部10个开发提交，并已逐提交清理旧素材、打包产物、研究文件与个人邮箱；说明和逐版本测试结果见[历史迁移](HISTORY.md)。
+项目统一维护于[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)。公开Git历史保留原私有仓库的全部10个开发提交，并已逐提交清理旧素材、打包产物、研究文件与个人邮箱；说明和逐版本测试结果见[历史迁移](HISTORY.md)。
 
 净化后的历史通过全新仓库发布。原始bundles和提交映射仅作本地私有备份；不要把旧对象、分支或标签重新推回公开仓库。仅删除工作树文件或加入`.gitignore`不能清理旧历史。
 
@@ -22,8 +22,8 @@ python scripts/package-public.py
 
 打包器会先运行对应源码的检查和测试，再按明确白名单生成：
 
-- `dist/majsoul-agent-source-0.4.0.zip`：以`majsoul-agent/`为根的源码，含三语介绍、Agent、harness、获取器、测试和CI。
-- `dist/majsoul-agent-0.4.0.zip`：完整版，解压后直接含`manifest.json`。
+- `dist/majsoul-ai-analysis-and-review-agent-source-0.4.0.zip`：以`majsoul-ai-analysis-and-review-agent/`为根的源码，含三语介绍、Agent、harness、获取器、测试和CI。
+- `dist/majsoul-ai-analysis-and-review-agent-0.4.0.zip`：完整版，解压后直接含`manifest.json`。
 - `dist/majsoul-collector-0.4.0.zip`：仅获取器，不含模型代码、设置页或模型主机权限。
 - `dist/SHA256SUMS-0.4.0.txt`：以上文件的SHA-256。
 
@@ -41,7 +41,7 @@ python scripts/package-public.py
 
 仓库简介可用：
 
-> Majsoul Agent：雀魂局面分析与复盘，包含独立牌局获取器、有界工具执行和自选模型。Mahjong analysis and review with a standalone collector and an execution harness.
+> Majsoul AI Analysis & Review Agent：雀魂局面分析与复盘，包含独立牌局获取器、有界工具执行和自选模型。Mahjong analysis and review with a standalone collector and an execution harness.
 
 Topics建议：`mahjong`、`majsoul`、`agent`、`browser-extension`、`llm`、`replay`。
 

@@ -1,4 +1,4 @@
-# Majsoul Agent：Agent、harness与获取器
+# Majsoul AI Analysis & Review Agent：Agent、harness与获取器
 
 0.4.0整合0.3.0已实现的危险牌、牌效率、综合攻守任务，不重写其本地算法和结构化合同。第一阶段服务于局面分析和复盘。
 
@@ -46,7 +46,7 @@ npm run build
 python scripts/package-public.py
 ```
 
-前者使用`extension/profiles/agent.json`和`collector.json`，在`dist/`生成`majsoul-agent-0.4.0/`和`majsoul-collector-0.4.0/`；后者先检查和测试，再生成完整源码、两种安装ZIP和SHA-256文件。获取器只含必要的采集、状态、历史、展示代码与原创牌面。其后台仅处理历史记录，没有模型监听器、分析模块、设置页或可选模型主机权限。
+前者使用`extension/profiles/agent.json`和`collector.json`，在`dist/`生成`majsoul-ai-analysis-and-review-agent-0.4.0/`和`majsoul-collector-0.4.0/`；后者先检查和测试，再生成完整源码、两种安装ZIP和SHA-256文件。获取器只含必要的采集、状态、历史、展示代码与原创牌面。其后台仅处理历史记录，没有模型监听器、分析模块、设置页或可选模型主机权限。
 
 构建按各profile的资源依赖闭包复制文件，不对共享UI做字符串替换。默认`extension/manifest.json`与agent profile一致。`npm run check`验证静态模块边界、纯核心不访问浏览器能力、资源完整性及加载顺序；collector闭包不能引入分析或模型文件。新增模块需同步显式入口与静态依赖规则。
 

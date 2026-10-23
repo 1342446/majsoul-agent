@@ -1,6 +1,10 @@
 # 开发历史迁移
 
-项目统一维护于[1342446/majsoul-agent](https://github.com/1342446/majsoul-agent)。公开历史继承原私有仓库的全部10个提交，不以单个源码快照代替开发过程。
+项目统一维护于[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)。公开历史继承原私有仓库的全部10个提交，不以单个源码快照代替开发过程。
+
+2026-10-23，现有公开仓库从 `majsoul-agent` 直接重命名为 `majsoul-ai-analysis-and-review-agent`，没有重建仓库或改写提交历史。新名称明确牌局 AI 分析与复盘定位，旧版本记录保留当时的项目名称。
+
+账号用户名随后更新为 `oreki-L`，当前仓库地址及克隆命令已同步；旧提交继续保留原有作者信息。
 
 ## 保留与清理
 

@@ -20,7 +20,7 @@ python agent/mjai-python-wrapper.py --help
 {
   "command": "python",
   "args": [
-    "D:/majsoul-agent/agent/mjai-python-wrapper.py",
+    "D:/majsoul-ai-analysis-and-review-agent/agent/mjai-python-wrapper.py",
     "--module-dir", "D:/my-engine",
     "--module", "my_mjai_bot",
     "--class", "Bot"

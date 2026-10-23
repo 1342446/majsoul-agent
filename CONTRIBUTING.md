@@ -7,14 +7,14 @@
 使用Node.js 22或更新版本；没有第三方运行依赖，无需安装Python或启动调试端口。
 
 ```sh
-git clone https://github.com/1342446/majsoul-agent.git
-cd majsoul-agent
+git clone https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent.git
+cd majsoul-ai-analysis-and-review-agent
 npm run check
 npm test
 npm run build
 ```
 
-在浏览器扩展管理页加载完整版`extension/`，或构建出的`dist/majsoul-agent-0.4.0/`；独立获取器加载`dist/majsoul-collector-0.4.0/`。源码变更后重新加载扩展并刷新游戏。离线演示可用任意本地静态服务器打开 `tests/preview.html`；演示只使用人工数据。
+在浏览器扩展管理页加载完整版`extension/`，或构建出的`dist/majsoul-ai-analysis-and-review-agent-0.4.0/`；独立获取器加载`dist/majsoul-collector-0.4.0/`。源码变更后重新加载扩展并刷新游戏。离线演示可用任意本地静态服务器打开 `tests/preview.html`；演示只使用人工数据。
 
 ## 修改与验证
 
