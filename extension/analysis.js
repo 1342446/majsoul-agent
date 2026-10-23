@@ -6,8 +6,9 @@
   const taskPrompts = {
     danger: '任务：防守风险分析。按每位对手分别解释每张候选弃牌的风险，不把对一家安全等同于对所有人安全。现物、筋、壁是不同证据，筋和壁不保证安全；副露对手也可能听牌。结合有序牌河、立直宣言、手摸切、巡目和副露；未知标记不可当手切。优先分析候选弃牌，没有手牌时只能给一般风险判断。efficiency必须为空，decision.action必须为unknown且tile为null。',
     efficiency: '任务：牌效率分析。只根据自家手牌、副露、规则和已授权的已见牌统计比较候选弃牌。localAnalysis是本地确定性计算，可解释其向听数和有效进张，禁止自己编造或修改数值。没有本地计算或手牌不完整时说明限制。已见牌统计不等于牌山信息，未见枚数仅为上界。danger必须为空；本任务不以猜测对手听牌牺牲效率。',
-    combined: '任务：综合攻守决策。先独立解释防守风险与本地牌效率计算，再结合局数、点差、庄家和剩余牌数权衡attack/defend/fold。风险必须按对手分别判断。localAnalysis中的数值由本地计算，禁止编造或修改；缺少点数、手牌或防守数据时明确降低结论强度，可返回unknown。'
+    combined: '任务：综合攻守决策。先独立解释防守风险与本地牌效率计算，再结合局数、点差、庄家和剩余牌数权衡attack/defend/fold。风险必须按对手分别判断。attack表示优先进攻，defend表示兼顾手牌推进的防守选择，fold表示以避铳为主而放弃和牌，unknown表示无法确定攻守策略；decision.tile始终表示建议打出的牌，不表示要避开的牌。选择defend或fold时，第一条理由必须说明建议牌相对其他合法候选的安全依据、主要防范哪家，以及牺牲或保留了什么牌效率。不得把进张更多、保持向听数等效率优势单独当作防守依据；推荐牌对某家不是现物时，必须说明为何仍作此取舍及尚存风险，不能直接声称安全。若没有足够证据比较候选风险，应明确风险未知，策略可返回unknown，具体弃牌仍可按本地牌效率建议。输出前核对策略标签、推荐牌和理由一致，不要为迎合标签编造依据。localAnalysis中的数值由本地计算，禁止编造或修改；缺少点数、手牌或防守数据时明确降低结论强度，可返回unknown。'
   };
+  const strategyExplanation = '策略理由必须与展示的策略逐一对应，并写在decision.reasons第一条，先解释为何选该策略，再解释为何打这张牌。进攻：根据当前向听、有效进张、可确认的打点或点差说明推进收益，并交代已知对手威胁和承担的风险；没有打点数据不得编造。防守：说明主要防范哪家，推荐牌相对候选的风险依据，以及保留的推进机会。弃和：说明为何当前收益不值得承担风险、主要防范哪家，以及弃和所选牌的安全依据。无法判断：说明缺少哪些影响攻守取舍的具体信息；若仍按本地牌效率推荐弃牌，明确它仅是效率建议、风险未知。不要给不同策略套用相同的进张描述，不以泛泛的“谨慎”“稳妥”“收益较好”代替当前局面的证据。';
   function normalizeTask(task) {
     const value = ({ discard: 'efficiency', both: 'combined' })[task] || task;
     if (!['danger', 'efficiency', 'combined'].includes(value)) throw new Error('无效的分析任务。');
@@ -20,7 +21,7 @@
     danger: { type: 'array', maxItems: 34, items: objectSchema({ tile: { type: 'string' }, opponents: { type: 'array', maxItems: 4,
       items: objectSchema({ seat: { type: 'integer', minimum: 0, maximum: 3 }, level: { type: 'string', enum: ['safe', 'low', 'medium', 'high', 'unknown'] }, reasons: textListSchema }) } }) },
     efficiency: { type: 'array', maxItems: 14, items: objectSchema({ tile: { type: 'string' }, reasons: textListSchema }) },
-    decision: objectSchema({ action: { type: 'string', enum: ['attack', 'defend', 'fold', 'unknown'] }, tile: { type: ['string', 'null'] }, reasons: textListSchema }),
+    decision: objectSchema({ action: { type: 'string', enum: ['attack', 'defend', 'fold', 'unknown'], description: '攻守策略，必须与推荐牌及理由一致。defend和fold需要候选间的风险比较依据；只有牌效率依据而风险无法比较时可用unknown。' }, tile: { type: ['string', 'null'], description: '建议打出的牌，不是要避开的牌；须满足本地合法候选校验。' }, reasons: textListSchema }),
     limitations: textListSchema
   });
   function engine() {
@@ -43,8 +44,9 @@
     if (task !== 'danger') data.efficiency = { ...(s.selfHand ? { selfHand: s.selfHand, selfDrawnTile: s.selfDrawnTile } : {}), ...(s.game ? { round: s.game.round, doras: s.game.doras,
       selfMelds: s.selfSeat === null ? null : s.game.players[s.selfSeat].melds, selfNorths: s.selfSeat === null ? null : s.game.players[s.selfSeat].norths } : {}), visibleTiles: visibleCounts(s) };
     const schema = JSON.parse(JSON.stringify(responseSchema)); schema.properties.task.enum = [task];
+    schema.properties.decision.properties.reasons.description = '第一条向玩家说明所选攻守策略的具体依据及推荐牌的取舍；其余条目补充依据。进攻解释收益与风险，防守解释相对安全与保留的推进机会，弃和解释放弃和牌的原因与安全依据，unknown解释缺失信息及效率建议的边界。';
     schema.properties.danger.items.properties.opponents.maxItems = s.selfSeat === null ? s.playerCount : s.playerCount - 1;
-    const modulePrompt = task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined : taskPrompts[task];
+    const modulePrompt = task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined + '\n' + strategyExplanation : taskPrompts[task];
     const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n内部校验规则（仅用于决定输出内容，不得写入理由）：只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。\n面向玩家的说明：decision.reasons第一条直接解释首选建议的牌理或攻守取舍，其余理由补充具体依据；不要用“满足条件”“允许建议具体弃牌”代替分析。所有reasons和limitations使用简短自然中文，不输出字段路径、布尔值、状态枚举或内部校验过程。仅说明实际影响判断的限制；无法建议弃牌时说“等待摸牌”或具体缺失的信息。不要把数据完整、校验通过当成限制。例如理由可写“保留两面搭子，优先打出孤张九万”，限制可写“尚未采集到对家的完整牌河，风险判断有限”；示例只说明表达方式，实际结论必须有当前数据支持。', userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data) + '\n输出JSON Schema：\n' + JSON.stringify(schema), responseSchema: schema };
     preparations.set(key, JSON.stringify(prepared));
     if (preparations.size > 8) preparations.delete(preparations.keys().next().value);

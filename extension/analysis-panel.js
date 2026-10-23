@@ -21,41 +21,47 @@
     }).catch(() => { failure = '偏好未保存，请刷新扩展。'; repaint?.(); });
   }
   function changePreferences(patch) {
-    cancelWork(); preferences = { ...preferences, ...patch }; task = selectedTask(); result = null; failure = ''; lastAutoKey = ''; preparationKey = ''; preparation = null;
+    if (!busy || pendingAutomatic || patch.useModel === false) cancelWork();
+    preferences = { ...preferences, ...patch }; task = selectedTask(); result = null; failure = ''; lastAutoKey = ''; preparationKey = ''; preparation = null;
     savePreferences(); repaint?.();
   }
-  function localResponse(data) {
-    const local = MJAnalysis.prepare(data, task).data.localAnalysis;
+  function localResponse(data, requestedTask = task) {
+    const local = MJAnalysis.prepare(data, requestedTask).data.localAnalysis;
     const candidates = [...(local.efficiency?.candidates || [])].sort((a, b) => a.shanten - b.shanten || b.totalUnseenUpperBound - a.totalUnseenUpperBound);
     const best = local.efficiency?.shanten === -1 ? null : candidates[0];
     return { ok: true, model: '本地分析 · 未调用模型', localAnalysis: local,
-      result: { task, danger: (local.danger?.candidates || []).map(c => ({ tile: c.tile, opponents: c.opponents.map(o => ({ seat: o.seat, level: o.genbutsu ? 'safe' : 'unknown', reasons: [o.genbutsu ? '该对手牌河已有此牌（现物）' : '无法仅凭本地规则确定危险等级', ...(o.sujiReferences.length ? ['筋参考：' + o.sujiReferences.map(MJSnapshotContract.label).join('、')] : []), ...(o.kabeReferences.length ? ['壁参考：' + o.kabeReferences.map(MJSnapshotContract.label).join('、')] : [])] })) })),
+      result: { task: requestedTask, danger: (local.danger?.candidates || []).map(c => ({ tile: c.tile, opponents: c.opponents.map(o => ({ seat: o.seat, level: o.genbutsu ? 'safe' : 'unknown', reasons: [o.genbutsu ? '该对手牌河已有此牌（现物）' : '无法仅凭本地规则确定危险等级', ...(o.sujiReferences.length ? ['筋参考：' + o.sujiReferences.map(MJSnapshotContract.label).join('、')] : []), ...(o.kabeReferences.length ? ['壁参考：' + o.kabeReferences.map(MJSnapshotContract.label).join('、')] : [])] })) })),
       efficiency: candidates.map(c => ({ tile: c.tile, reasons: [`${c.shanten} 向听，有效牌未见合计上界 ${c.totalUnseenUpperBound} 枚`] })), decision: { action: 'unknown', tile: data.phase === 'playing' && best ? best.tile : null, reasons: [best ? `仅按牌效率比较：打出${MJSnapshotContract.label(best.tile)}后 ${best.shanten} 向听，有效牌未见合计 ≤${best.totalUnseenUpperBound} 枚；未综合放铳风险。` : local.efficiency?.shanten === -1 ? '当前手牌已成和牌形；是否可以和牌还需确认役种与规则。' : '本地分析提供确定性依据，不生成综合攻守结论。'] },
       limitations: local.danger?.limitations || [] } };
   }
   async function runAnalysis(automatic = false) {
-    if (busy || !hasFeatures()) return;
+    if (busy || (automatic && !hasFeatures())) return;
     const id = ++requestId;
     try {
-      const data = snapshot(), external = usesModel(data);
+      const data = snapshot(), external = automatic ? usesModel(data) : preferences.useModel;
       if (external && (!available || !enabled)) throw new Error('请先在模型设置中接入并开启模型。');
-      const actualProvider = external ? provider : 'local';
-      const extra = external && provider === 'mjai' ? { engineRequest: engineRequest() } : {};
+      const actualProvider = external ? provider : 'local', requestedTask = automatic ? task : 'combined';
+      const extra = external && provider === 'mjai' ? { engineRequest: engineRequest(requestedTask) } : {};
       const captured = fingerprint(), seatLabels = current.seatLabels.slice();
-      pendingFingerprint = captured; busy = true; failure = '';
+      const capturedPosition = { round: data.game?.round, source: context?.mode, cursor: context?.cursor, selfSeat: data.selfSeat, hand: data.selfHand?.slice() || [] };
+      pendingFingerprint = automatic ? captured : ''; pendingAutomatic = automatic; busy = true;
+      if (automatic) failure = ''; else globalFailure = '';
       if (automatic && external) { autoCalls++; lastModelAt = Date.now(); }
       repaint?.();
-      const response = external ? await send({ type: 'model:analyze', provider, task, snapshot: data, ...extra }) : localResponse(data);
-      if (id !== requestId || captured !== fingerprint()) return;
+      const response = external ? await send({ type: 'model:analyze', provider, task: requestedTask, snapshot: data, ...extra }) : localResponse(data, requestedTask);
+      if (id !== requestId || (automatic && captured !== fingerprint())) return;
       if (!response?.ok) throw new Error(response?.error || '分析失败，请重试。');
       // A combined backend request may supply extra sections; display only enabled help.
-      if (!preferences.danger) response.result.danger = [];
-      if (!preferences.efficiency) { response.result.efficiency = []; if (response.localAnalysis) delete response.localAnalysis.efficiency; }
-      if (!preferences.strategy && task === 'combined') response.result.decision = localResponse(data).result.decision;
-      if (actualProvider === 'local' && !preferences.efficiency) response.result.decision = { action: 'unknown', tile: null, reasons: [preferences.strategy ? '综合攻守解释需要模型；本地仅提供已开启的确定性依据。' : '本地仅提供危险牌依据，不生成弃牌建议。'] };
-      focusTile = null;
-      result = { ...response, actualProvider, seatLabels, positionPhase: data.phase, fingerprint: captured, time: new Date().toLocaleTimeString('zh-CN') };
-    } catch (e) { if (id === requestId) failure = e.message; }
+      if (automatic) {
+        if (!preferences.danger) response.result.danger = [];
+        if (!preferences.efficiency) { response.result.efficiency = []; if (response.localAnalysis) delete response.localAnalysis.efficiency; }
+        if (!preferences.strategy && task === 'combined') response.result.decision = localResponse(data).result.decision;
+        if (actualProvider === 'local' && !preferences.efficiency) response.result.decision = { action: 'unknown', tile: null, reasons: [preferences.strategy ? '综合攻守解释需要模型；本地仅提供已开启的确定性依据。' : '本地仅提供危险牌依据，不生成弃牌建议。'] };
+        focusTile = null;
+      }
+      const completed = { ...response, actualProvider, seatLabels, positionPhase: data.phase, fingerprint: captured, time: new Date().toLocaleTimeString('zh-CN'), position: capturedPosition };
+      if (automatic) result = completed; else globalResult = completed;
+    } catch (e) { if (id === requestId) { if (automatic) failure = e.message; else globalFailure = e.message; } }
     finally { if (id === requestId) { busy = false; pendingFingerprint = ''; repaint?.(); } }
   }
   function scheduleAnalysis(data) {
@@ -70,6 +76,7 @@
     autoTimer = setTimeout(() => { autoTimer = null; if (key !== fingerprint()) return; lastAutoKey = key; runAnalysis(true); }, delay);
   }
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
+  let pendingAutomatic = false, globalResult = null, globalFailure = '';
   let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, statusRequestId = 0, connected = false;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -78,15 +85,16 @@
   const rendered = new WeakMap();
   const face = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t) ? `<img class="analysis-tile" src="${escape(tileBase + t + '.svg')}" alt="${escape(MJSnapshotContract.label(t))}" title="${escape(MJSnapshotContract.label(t))}">` : escape(t);
   const reasons = values => (values || []).map(escape).join('；');
-  const actionNames = { attack: '进攻', defend: '回避', fold: '弃和', unknown: '暂无法判断' };
+  const actionNames = { attack: '进攻', defend: '防守', fold: '弃和', unknown: '暂无法判断' };
   const riskNames = { safe: '现物', low: '较低', medium: '中等', high: '较高', unknown: '未知' };
   const decisionLabel = response => response?.actualProvider === 'local' ? '本地分析' : ({ reach: '立直意向', none: '跳过响应' })[response?.engine?.action?.type] || actionNames[response?.result?.decision?.action] || '暂无法判断';
+  const decisionHeading = response => escape(decisionLabel(response)) + (response?.result?.decision?.tile ? ' · 建议打' : '');
   function resultHtml(response) {
     const r = response.result;
     if (!r) return '';
     return `${r.danger.length ? '<h4>逐对手危险牌</h4>' + r.danger.map(d => `<div class="analysis-card">${face(d.tile)}${d.opponents.map(o => `<p>${escape(response.seatLabels?.[o.seat] || ('座位 ' + o.seat))} · ${escape(riskNames[o.level])}：${reasons(o.reasons)}</p>`).join('')}</div>`).join('') : ''}
       ${r.efficiency.length ? '<h4>牌效率解释</h4>' + r.efficiency.map(e => `<div class="analysis-card">${face(e.tile)} ${reasons(e.reasons)}</div>`).join('') : ''}
-      <h4>建议</h4><p>${escape(decisionLabel(response))} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
+      <h4>建议</h4><p>${decisionHeading(response)} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
       ${r.limitations.length ? `<p class="warn">${reasons(r.limitations)}</p>` : ''}
       ${response.trace ? `<details data-section="trace"><summary>Agent 运行记录</summary><ol>${response.trace.events.map(event => `<li>${escape(event.tool)} · ${escape(event.status)} · ${escape(event.elapsedMs)} ms</li>`).join('')}</ol></details>` : ''}`;
   }
@@ -100,15 +108,15 @@
       <table><thead><tr><th>弃牌</th><th>向听</th><th>有效牌 / 未见上界</th><th>合计上界</th></tr></thead><tbody>${e.candidates.map(entry).join('')}${e.current ? entry(e.current) : ''}</tbody></table><p class="muted">未见枚数为上界，不代表牌山剩余枚数。${e.visibleTiles.partial ? '已见牌范围不完整。' : ''}</p>`;
   }
   function snapshot() { return current.snapshot(selection); }
-  function engineRequest() {
+  function engineRequest(requestedTask = task) {
     if (!selection.game || selection.rivers !== 'all' || !selection.hand) throw new Error('专业引擎需要授权对局信息、全部公开牌河及自家手牌。');
     if (typeof current.engineRequest !== 'function') throw new Error('当前输入不支持专业引擎事件，请重新加载扩展。');
-    if (task !== 'combined') throw new Error('本地 mjai 仅支持综合决策，请开启攻守建议。');
+    if (requestedTask !== 'combined') throw new Error('本地 mjai 仅支持综合决策，请开启攻守建议。');
     return current.engineRequest(selection);
   }
   let preparationKey = '', preparation = null, preparationError = '', preparationBusy = false;
   function requestPreparation(data) {
-    const generation = lifecycle, taskAtRequest = task, external = usesModel(data), extra = { provider: external ? provider : 'local', ...(external && provider === 'mjai' ? { engineRequest: engineRequest() } : {}) }, key = JSON.stringify([taskAtRequest, data, extra]);
+    const generation = lifecycle, taskAtRequest = 'combined', external = preferences.useModel, extra = { provider: external ? provider : 'local', ...(external && provider === 'mjai' ? { engineRequest: engineRequest(taskAtRequest) } : {}) }, key = JSON.stringify([taskAtRequest, data, extra]);
     if (key === preparationKey) return;
     preparationKey = key; preparation = null; preparationError = ''; preparationBusy = true;
     const pending = available && external ? send({ type: 'model:prepare', task: taskAtRequest, snapshot: data, ...extra }) : new Promise(resolve => setTimeout(() => {
@@ -158,6 +166,7 @@
       if (busy) send({ type: 'model:cancel' }).catch(() => {});
     }
     connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false; provider = 'chat';
+    globalResult = null; globalFailure = ''; pendingAutomatic = false;
     current = null; context = null; repaint = null;
     preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
     selection.game = true; selection.rivers = 'all'; selection.hand = true; task = 'combined';
@@ -176,9 +185,8 @@
     const sourceChanged = context && (context.mode !== position?.mode || context.replayRevision !== position?.replayRevision || JSON.stringify(context.historyView) !== JSON.stringify(position?.historyView));
     const cursorChanged = context && context.cursor !== position?.cursor;
     if (sourceChanged || cursorChanged) {
-      requestId++;
-      if (busy && available) send({ type: 'model:cancel' }).catch(() => {});
-      busy = false; failure = ''; preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
+      if (!busy || pendingAutomatic) cancelWork();
+      failure = ''; preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
       if (sourceChanged) { result = null; focusTile = null; }
     }
     current = analysisView; context = { ...position }; repaint = render;
@@ -190,7 +198,6 @@
     const live = context?.mode === 'live' && current.phase === 'playing';
     let selectedSnapshot = null;
     try { selectedSnapshot = snapshot(); } catch (_) {}
-    const observedTurn = turnNumber(selectedSnapshot);
     const hintHand = current.selfHand || selectedSnapshot?.selfHand;
     hooks.onHints?.(live && !stale && result?.result && Array.isArray(hintHand) && hintHand.length ? {
       hand: hintHand.slice(), drawnTile: current.drawnTile ?? selectedSnapshot?.selfDrawnTile ?? null, decision: result.result.decision,
@@ -240,6 +247,20 @@
       <label title="仅限制自动调用，手动分析不受限。">每局调用上限 <input id="model-limit" type="number" min="1" max="100" value="${preferences.limit}"> <span class="muted">已用 ${autoCalls} 次</span></label>
       ${!preferences.useModel ? '<p class="muted">本地计算，不发送数据。</p>' : ''}
       <div class="analysis-calibration"><button title="${current.hintsReady ? '首次使用需校准手牌位置，可随时重校。' : '进入游戏牌桌后可校准手牌提示。'}" id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button></div><button id="model-preview">${preview ? '收起' : '查看'}分析数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
+    const globalBusy = busy && !pendingAutomatic;
+    const savedRound = globalResult?.position.round;
+    const savedPosition = globalResult ? [globalResult.position.source === 'replay' ? '牌谱' : globalResult.position.source === 'live' ? '实时' : '历史',
+      savedRound ? `${['东', '南', '西', '北'][savedRound.wind] || '东'}${savedRound.index + 1}局` : '',
+      globalResult.seatLabels[globalResult.position.selfSeat] || '',
+      globalResult.position.source === 'replay' ? `事件 ${globalResult.position.cursor}` : '', globalResult.time].filter(Boolean).join(' · ') : '';
+    const globalHtml = `<section class="analysis-global" aria-label="全局分析">
+      <h3>全局分析</h3>
+      <div class="analysis-actions"><button id="model-run" ${busy || !!error || !preferencesLoaded ? 'disabled' : ''}>${globalBusy ? '正在分析…' : replay ? '分析所选局面' : '分析当前局面'}</button>${globalBusy ? '<button id="model-cancel">取消</button>' : ''}</div>
+      ${globalResult ? `<p class="analysis-meta muted">${escape(savedPosition)} · ${escape(globalResult.model)}</p><div class="analysis-global-result">
+        <div class="analysis-decision"><span>${decisionHeading(globalResult)}</span>${globalResult.result.decision.tile ? face(globalResult.result.decision.tile) : ''}<p>${escape(globalResult.result.decision.reasons?.[0] || '请展开分析依据。')}</p></div>
+        ${disclosure('global-details', '分析依据', `${resultHtml(globalResult)}${globalResult.position.hand.length ? `<div class="analysis-global-hand" aria-label="分析时手牌">${globalResult.position.hand.map(face).join('')}</div>` : ''}${localHtml(globalResult.localAnalysis, globalResult.positionPhase)}`)}</div>` : '<p class="muted">尚未分析</p>'}
+      ${globalFailure ? `<p class="warn" role="status">${escape(globalFailure)}</p>` : ''}
+      </section>`;
     const markup = `<section class="analysis" aria-label="模型分析">
       ${modeControls}${replayControls}
       <div class="analysis-switches" role="group" aria-label="辅助功能">
@@ -247,17 +268,17 @@
       <label><input id="model-use" type="checkbox" ${preferences.useModel ? 'checked' : ''}> 调用模型</label>
       ${[['danger', '危险牌提示'], ['efficiency', '手牌建议'], ['strategy', '攻守建议']].map(([key, label]) => `<label><input id="feature-${key}" type="checkbox" ${preferences[key] ? 'checked' : ''}> ${label}</label>`).join('')}
       <button id="model-preset">综合辅助</button></div>
-      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${replay ? '视角' : '自家'}${escape(selfLabel)}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : !preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
-      <p class="muted" title="按自家第几次打牌计数，来源：连续采集事件">${observedTurn === null ? '巡目未知 · 等待从开局连续采集并确认自家座位' : `下次自家打牌 · 第 ${observedTurn} 次`}</p>
+      <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${escape(selfLabel)}${replay ? '视角' : ''}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : !preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
-      <div class="analysis-main" role="status" aria-live="polite">
+      <div class="analysis-main" role="status" aria-live="polite"><h3>出牌提示</h3>
       ${stale ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}
-      ${r ? `<div class="analysis-decision"><span>${escape(decisionLabel(result))}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : preferences.automatic ? '等待自己的出牌决策' : '点击分析当前局面'}</strong><p class="muted">${!hasFeatures() ? '请至少开启一项辅助功能。' : preferences.useModel ? !enabled ? '请在模型设置中接入并开启模型。' : `第 ${preferences.modelFromTurn} 巡起调用模型，此前使用本地分析。` : '仅本地计算，不调用模型。'}</p></div>`}
+      ${r ? `<div class="analysis-decision"><span>${decisionHeading(result)}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy && pendingAutomatic ? '正在分析出牌…' : !current.round ? '等待开局数据' : preferences.automatic ? '等待轮到你出牌' : '自动提示未开启'}</strong>${!hasFeatures() ? '<p class="muted">请至少开启一项辅助功能。</p>' : preferences.useModel && !enabled ? '<p class="muted">请在模型设置中接入并开启模型。</p>' : ''}</div>`}
       ${replay ? '' : current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
       ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
       </div>
-      <div class="analysis-actions"><button id="model-run" ${busy || !!error || !hasFeatures() || !preferencesLoaded ? 'disabled' : ''}>${busy ? '正在分析…' : replay ? '分析所选局面' : '分析当前局面'}</button>${busy ? '<button id="model-cancel">取消</button>' : ''}</div>
+      ${busy && pendingAutomatic ? '<div class="analysis-actions"><button id="model-auto-cancel">取消自动分析</button></div>' : ''}
       ${disclosure('reasons', '详细分析', `${handSection}${r ? `${resultHtml(result)}${localHtml(result.localAnalysis, result.positionPhase)}<p class="analysis-meta muted">${escape(result.model)} · ${escape(result.time)}${stale ? ' · 旧结果' : ' · 对应分析时快照'}</p>` : '<p class="muted">尚未生成分析结果。</p>'}`)}
+      ${globalHtml}
       ${disclosure('controls', '分析设置', settings)}
       <footer class="analysis-footer"><button id="analysis-collector">牌局获取器</button><button id="analysis-history">整场记录</button></footer>
       </section>`;
@@ -297,8 +318,8 @@
       $(id).onchange = e => { if (e.isTrusted) changePreferences({ [key]: Math.min(max, Math.max(min, Math.trunc(Number(e.target.value)) || min)) }); };
     }
     $('model-preview').onclick = () => { preview = !preview; render(); };
-    if (busy) $('model-cancel').onclick = event => { if (event.isTrusted) { cancelWork(); failure = '已取消分析。'; render(); } };
-    $('model-run').onclick = event => { if (event.isTrusted && preferencesLoaded) { lastAutoKey = fingerprint(); return runAnalysis(); } };
+    if (busy) $(pendingAutomatic ? 'model-auto-cancel' : 'model-cancel').onclick = event => { if (event.isTrusted) { const wasAutomatic = pendingAutomatic; cancelWork(); if (wasAutomatic) failure = '已取消分析。'; else globalFailure = '已取消分析。'; render(); } };
+    $('model-run').onclick = event => { if (event.isTrusted && preferencesLoaded) return runAnalysis(); };
     if (selectedSnapshot && context?.mode === 'live') {
       const nextRound = JSON.stringify([ selectedSnapshot.game?.round, selectedSnapshot.game?.honba]);
       if (nextRound !== roundKey || (selectedSnapshot.rivers?.find(r => r.seat === selectedSnapshot.selfSeat)?.discards.length || 0) < previousDiscards) { roundKey = nextRound; autoCalls = 0; lastAutoKey = ''; }

@@ -31,16 +31,18 @@ function panel(options = {}) {
   render();
   return { timers, fireTimer: () => { const [id, timer] = timers.entries().next().value; timers.delete(id); return timer.fn(); }, render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: (sender = { id: 'fixture' }) => configChanged?.({ type: 'model:config-changed' }, sender), resolve: value => resolveAnalysis(value) };
 }
-test('panel previews task-specific data and escapes model text while rendering tile cards and local table', async () => {
+test('global preview and request use combined data regardless of automatic features, and escape model text', async () => {
   const p = panel(); await flush();
   p.element('feature-strategy').onchange({ isTrusted: true, target: { checked: false } }); p.element('feature-danger').onchange({ isTrusted: true, target: { checked: false } }); p.element('model-preview').onclick(); await flush();
-  assert.match(p.html(), /mj-analysis-v2/); assert.doesNotMatch(p.html(), /tsumogiri/);
+  assert.match(p.html(), /mj-analysis-v2/); assert.match(p.html(), /candidateMeaning/);
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   const req = p.messages.find(m => m.type === 'model:analyze'), prep = A.prepare(req.snapshot, req.task);
   assert.equal(req.provider, 'chat'); assert.equal('engineRequest' in req, false);
   p.resolve({ ok: true, model: '<mock>', localAnalysis: prep.data.localAnalysis, result: { task: 'efficiency', danger: [], efficiency: [{ tile: '1m', reasons: ['<img onerror=bad>'] }], decision: { action: 'attack', tile: '1m', reasons: ['测试'] }, limitations: [] } });
   await pending; assert.match(p.html(), /<table>/); assert.match(p.html(), /1m\.svg/); assert.match(p.html(), /&lt;img onerror=bad&gt;/); assert.doesNotMatch(p.html(), /<img onerror/);
-  p.state.lastStep++; p.render(); assert.match(p.html(), /旧结果/);
+  assert.equal(req.task, 'combined');
+  const saved = globalSection(p);
+  p.state.lastStep++; p.render(); assert.equal(globalSection(p), saved);
 });
 test('panel cancellation discards delayed model results and synthetic clicks send no request', async () => {
   const p = panel(); await flush(); await p.element('model-run').onclick({ isTrusted: false });
@@ -51,8 +53,8 @@ test('panel cancellation discards delayed model results and synthetic clicks sen
   await pending; assert.doesNotMatch(p.html(), /late-result/); assert.match(p.html(), /已取消分析/);
 });
 
-test('task and configuration changes invalidate pending results rather than refilling the panel', async () => {
-  for (const change of [p => p.element('feature-efficiency').onchange({ isTrusted: true, target: { checked: false } }), p => p.configChanged()]) {
+test('configuration changes cancel pending global analysis', async () => {
+  for (const change of [p => p.configChanged(), p => p.element('model-use').onchange({ isTrusted: true, target: { checked: false } })]) {
     const p = panel(); await flush(); const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
     change(p); p.resolve({ ok: true, model: 'late', result: { danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['late-old-task'] }, limitations: [] } });
     await pending; assert.doesNotMatch(p.html(), /late-old-task/); assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
@@ -103,60 +105,67 @@ test('late status responses cannot overwrite configuration refreshed by a backgr
     else pending[0].resolve({ enabled: false });
     await flush();
     assert.doesNotMatch(p.html(), /请在模型设置中接入并开启模型/);
-    assert.match(p.html(), /第 1 巡起调用模型/);
+    assert.match(p.html(), /id="model-use"[^>]*checked/);
+    assert.doesNotMatch(p.html(), /此前使用本地分析/);
     p.destroy();
   }
 });
 
 
 const modelResult = () => ({ ok: true, model: 'fixture', result: { danger: [{ tile: '1m', opponents: [{ seat: 2, level: 'high', reasons: ['警戒'] }] }], efficiency: [{ tile: '2m', reasons: ['候选'] }], decision: { action: 'attack', tile: '1m', reasons: ['测试结论'] }, limitations: ['仅供参考'] } });
+const globalSection = p => p.html().split('<section class="analysis-global"')[1].split('</section>')[0];
+const automaticPanel = (options = {}) => panel({ ...options, manualTimers: true, preferences: { automatic: true, useModel: true, ...options.preferences } });
+async function automaticResult(p, response = modelResult()) {
+  p.state.turn = p.state.selfSeat; p.render(); p.fireTimer(); await flush();
+  p.resolve(response); await flush();
+}
 
 test('hints only describe the matching live hand and never alter sending authorization', async () => {
-  const p = panel(); await flush();
+  const p = automaticPanel(); await flush();
   assert.equal(p.hints.at(-1), null);
-  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  await automaticResult(p);
   assert.deepEqual(Array.from(p.messages.find(m => m.type === 'model:analyze').snapshot.selfHand), p.state.selfHand);
-  p.resolve(modelResult()); await pending;
   const value = p.hints.at(-1);
   assert.deepEqual(Array.from(value.hand), p.state.selfHand);
   assert.notEqual(value.hand, p.state.selfHand);
   assert.equal(value.decision.tile, '1m');
   p.position.mode = 'history'; p.render(); assert.equal(p.hints.at(-1), null);
   p.position.mode = 'live'; p.render(); assert.equal(p.hints.at(-1), null);
-  const next = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await next;
+  p.state.lastStep++; await automaticResult(p);
   p.state.selfHand[0] = '9s'; p.render(); assert.equal(p.hints.at(-1), null);
   assert.match(p.html(), /旧结果/);
   p.destroy(); assert.equal(p.hints.at(-1), null);
 });
 
-test('visible mode switch exposes replay navigation and clears results without sending analysis', async () => {
+test('visible mode switch exposes replay navigation and preserves global analysis', async () => {
   const p = panel({ recordCount: 3 }); await flush();
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
-  assert.ok(p.hints.at(-1));
+  assert.equal(p.hints.at(-1), null);
   const requests = p.messages.filter(m => m.type === 'model:analyze').length;
   p.element('analysis-mode-replay').onclick();
   assert.equal(p.position.mode, 'replay');
   assert.match(p.html(), /id="analysis-mode-replay" aria-pressed="true"/);
   assert.match(p.html(), /事件 1 \/ 3/); assert.match(p.html(), /分析所选局面/);
-  assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
+  assert.match(globalSection(p), /测试结论/); assert.equal(p.hints.at(-1), null);
   p.element('analysis-replay-next').onclick(); assert.equal(p.position.cursor, 2);
   p.element('analysis-replay-prev').onclick(); assert.equal(p.position.cursor, 1);
   p.element('analysis-replay-cursor').onchange({ target: { value: '3' } }); assert.equal(p.position.cursor, 3);
   p.element('analysis-replay-start').onclick(); assert.equal(p.roundStartCalls(), 1);
   p.element('analysis-replay-seat').onchange({ target: { value: '2' } }); assert.equal(p.state.selfSeat, 2);
   const review = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await review;
-  assert.match(p.html(), /analysis-hand-tile is-suggested/); assert.equal(p.hints.at(-1), null);
-  p.element('analysis-mode-live').onclick(); assert.doesNotMatch(p.html(), /测试结论|analysis-replay-heading/);
+  assert.match(globalSection(p), /测试结论/); assert.equal(p.hints.at(-1), null);
+  p.element('analysis-mode-live').onclick(); assert.match(globalSection(p), /测试结论/); assert.doesNotMatch(p.html(), /analysis-replay-heading/);
   assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, requests + 1);
 });
 
-test('mode, replay replacement and cursor changes cancel pending work and ignore delayed results', async () => {
+test('global requests finish for their captured replay position after mode, replacement or cursor changes', async () => {
   for (const change of [p => p.element('analysis-mode-live').onclick(), p => { p.position.replayRevision = 2; p.render(); }, p => p.element('analysis-replay-next').onclick()]) {
     const p = panel({ recordCount: 3 }); await flush(); p.element('analysis-mode-replay').onclick();
     const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
     change(p); p.resolve(modelResult()); await pending;
-    assert.doesNotMatch(p.html(), /测试结论|正在分析…/);
-    assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
+    assert.match(globalSection(p), /测试结论/); assert.doesNotMatch(p.html(), /正在分析…/);
+    assert.equal(p.messages.some(m => m.type === 'model:cancel'), false);
+    assert.match(globalSection(p), /牌谱[^]*事件 1/);
     assert.equal(p.hints.at(-1), null);
   }
 });
@@ -167,11 +176,11 @@ test('empty replay explains how to load records and never substitutes the live r
   assert.doesNotMatch(p.html(), /id="analysis-replay-cursor"/);
 });
 
-test('feature changes clear old output and hints', async () => {
+test('feature changes preserve global output without creating live hints', async () => {
   const p = panel(); await flush();
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
   p.element('feature-danger').onchange({ isTrusted: true, target: { checked: false } });
-  assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
+  assert.match(globalSection(p), /测试结论/); assert.equal(p.hints.at(-1), null);
 });
 
 test('disclosures and scroll persist and utility entry points call supplied callbacks', async () => {
@@ -199,12 +208,12 @@ test('styles resolve inside the panel for extension and offline shadow roots', a
 
 
 test('round and seat identify the hand, drawn tile separates and current results annotate tile kinds', async () => {
-  const p = panel(); await flush();
+  const p = automaticPanel(); await flush();
   p.state.drawnTiles[p.state.selfSeat] = '4z'; p.render();
-  assert.match(p.html(), /东1局 · 自家/);
+  assert.match(p.html(), /东1局 · 南家/);
   assert.match(p.html(), /class="analysis-hand-drawn"/);
   assert.match(p.html(), /--hand-count:14;--concealed-count:13/);
-  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
+  await automaticResult(p);
   assert.match(p.html(), /aria-label="[^"<>]*建议[^"<>]*高危"/);
   p.state.lastStep++; p.render();
   assert.doesNotMatch(p.html(), /class="analysis-hand-tile is-/);
@@ -227,11 +236,10 @@ test('waiting snapshot errors stay in settings and calibration only runs with a 
 
 
 test('suggested tiles distinguish red fives while danger applies to their shared tile kind', async () => {
-  const p = panel(); await flush();
-  p.state.selfHand = ['0m', '5m']; p.render();
-  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const p = automaticPanel(); await flush();
+  p.state.selfHand = ['0m', '5m', ...p.state.selfHand.slice(2)]; p.render();
   const response = modelResult(); response.result.decision.tile = '5m'; response.result.danger[0].tile = '5m';
-  p.resolve(response); await pending;
+  await automaticResult(p, response);
   const red = p.html().match(/<span class="analysis-hand-tile[^>]*aria-label="[^"]*"[^>]*><img[^>]*src="[^"]*0m\.svg"/)[0];
   const normal = p.html().match(/<span class="analysis-hand-tile[^>]*aria-label="[^"]*"[^>]*><img[^>]*src="[^"]*5m\.svg"/)[0];
   assert.match(red, /is-dangerous/); assert.doesNotMatch(red, /is-suggested|建议/);
@@ -244,16 +252,17 @@ test('suggested tiles distinguish red fives while danger applies to their shared
 
 
 test('compact summary keeps hand and metadata folded while candidates switch explanation without requests', async () => {
-  const p = panel(); await flush();
-  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
-  p.resolve(modelResult()); await pending;
-  const main = () => p.html().split('<div class="analysis-main"')[1].split('<div class="analysis-actions"')[0];
+  const p = automaticPanel(); await flush();
+  const response = modelResult(); response.result.decision.action = 'defend';
+  await automaticResult(p, response);
+  const main = () => p.html().split('<div class="analysis-main"')[1].split('<details data-section="reasons"')[0];
   const focus = () => p.html().split('<div class="analysis-focus"')[1].split('</div>')[0];
   assert.doesNotMatch(main(), /analysis-hand|analysis-meta/);
   assert.match(p.html(), /<details data-section="reasons"[^>]*><summary>详细分析<\/summary><div class="analysis-hand"/);
   assert.doesNotMatch(p.html(), /data-section="local"/);
   assert.match(p.html(), /id="model-run"[^>]*>分析当前局面<\/button>/);
   assert.match(focus(), /首选建议/); assert.match(focus(), /较高/); assert.match(focus(), /警戒/);
+  assert.match(main(), /防守 · 建议打<\/span>[^]*1m\.svg/); assert.doesNotMatch(main(), /回避/);
   const originalDecision = p.hints.at(-1).decision;
   const requests = p.messages.length;
   p.element('model-candidate-1').onclick();
@@ -273,7 +282,7 @@ test('enabling model calls needs no separate consent, including legacy consent=f
   p.resolve(modelResult()); await pending; p.destroy();
 });
 
-test('engine preview matches its event input and provider switching clears results and hints', async () => {
+test('engine preview matches its input and provider switching retains the saved global result', async () => {
   const options = { provider: 'mjai', engineRequest: () => ({ format: 'majsoul-mjai-v1', seat: 0, events: [{ type: 'tsumo', actor: 0, pai: '9p' }] }) };
   const p = panel(options); await flush();
 
@@ -287,20 +296,20 @@ test('engine preview matches its event input and provider switching clears resul
   const response = modelResult(); response.engine = { action: { type: 'reach', actor: 0 } };
   response.result.decision = { action: 'unknown', tile: null, reasons: ['engine-reach'] };
   p.resolve(response); await pending;
-  assert.match(p.html(), /analysis-decision"><span>立直意向/);
+  assert.match(globalSection(p), /立直意向/);
   options.provider = 'chat'; p.configChanged(); await flush();
-  assert.doesNotMatch(p.html(), /engine-reach|当前来源：自选本地 mjai/);
+  assert.match(globalSection(p), /engine-reach/);
   assert.equal(p.hints.at(-1), null);
 });
 
-test('engine skip action is shown as skipping a response in both summaries', async () => {
+test('engine skip action is shown in the global result', async () => {
   const p = panel({ provider: 'mjai', engineRequest: () => ({ events: [] }) }); await flush();
 
   const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
   const response = modelResult(); response.engine = { action: { type: 'none' } };
   response.result.decision = { action: 'unknown', tile: null, reasons: [] };
   p.resolve(response); await pending;
-  assert.equal((p.html().match(/跳过响应/g) || []).length, 2);
+  assert.match(globalSection(p), /跳过响应/);
 });
 
 const toggle = (p, id, checked) => p.element(id).onchange({ isTrusted: true, target: { checked } });
@@ -349,7 +358,7 @@ test('model off, replay and disabled features suppress automatic model calls', a
   toggle(p, 'model-use', true); assert.equal(p.timers.size, 1);
   p.element('analysis-mode-replay').onclick(); assert.equal(p.timers.size, 0);
   for (const key of ['danger', 'efficiency', 'strategy']) toggle(p, 'feature-' + key, false);
-  await p.element('model-run').onclick({ isTrusted: true }); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  assert.equal(p.timers.size, 0); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
   p.destroy();
 });
 
@@ -366,7 +375,7 @@ test('disabling strategic advice retains mathematical discard comparison and sav
   p.state.selfHand[13] = '5z'; p.render();
   toggle(p, 'feature-strategy', false);
   await p.element('model-run').onclick({ isTrusted: true });
-  assert.match(p.html(), /仅按牌效率比较/); assert.ok(p.hints.at(-1).decision.tile);
+  assert.match(globalSection(p), /仅按牌效率比较/); assert.equal(p.hints.at(-1), null);
   const saved = p.messages.find(m => m.type === 'model:preferences'); assert.equal(saved.preferences.strategy, false);
   assert.equal(saved.preferences.danger, true); assert.equal(saved.preferences.efficiency, true);
   p.destroy();
@@ -375,7 +384,7 @@ test('disabling strategic advice retains mathematical discard comparison and sav
 test('local completed shape is identified without recommending a discard', async () => {
   const p = panel({ preferences: {} }); await flush();
   await p.element('model-run').onclick({ isTrusted: true });
-  assert.match(p.html(), /当前手牌已成和牌形/); assert.equal(p.hints.at(-1).decision.tile, null);
+  assert.match(globalSection(p), /当前手牌已成和牌形/); assert.equal(p.hints.at(-1), null);
   p.destroy();
 });
 
@@ -386,10 +395,11 @@ test('unknown collector turns never cross a turn threshold from river length, bu
   p.render(); assert.match(p.html(), /巡目未知/);
   p.fireTimer(); await flush();
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
-  await p.element('model-run').onclick({ isTrusted: true });
-  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  const globalPending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
+  p.resolve(modelResult()); await globalPending;
   p.element('model-from-turn').onchange({ isTrusted: true, target: { value: '1' } });
-  p.fireTimer(); await flush(); assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
+  p.fireTimer(); await flush(); assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 2);
   p.resolve(modelResult()); await flush(); p.destroy();
 });
 
@@ -401,4 +411,62 @@ test('loss of turn confidence cancels pending threshold requests and discards de
   assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
   assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
   p.fireTimer(); await flush(); assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1); p.destroy();
+});
+
+test('global result survives draws, new rounds, feature changes, configuration changes and automatic updates', async () => {
+  const p = automaticPanel(); await flush();
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const response = modelResult(); response.result.decision.reasons = ['保留的全局结论'];
+  response.result.decision.action = 'defend';
+  p.resolve(response); await pending;
+  assert.match(globalSection(p), /防守 · 建议打<\/span>[^]*1m\.svg/);
+  const savedHand = p.state.selfHand.slice();
+  assert.equal(p.hints.at(-1), null);
+  p.state.selfHand[0] = '9p'; p.state.lastStep = 1; p.render();
+  assert.match(globalSection(p), /保留的全局结论/);
+  assert.match(globalSection(p), /分析时手牌[^]*1m\.svg/);
+  p.state.round.index = 1; p.state.lastStep = 2; p.render();
+  assert.match(globalSection(p), /东1局/);
+  assert.deepEqual(savedHand.slice(0, 1), ['1m']);
+  toggle(p, 'feature-efficiency', false);
+  p.configChanged(); await flush();
+  assert.match(globalSection(p), /保留的全局结论/);
+  await automaticResult(p);
+  assert.equal(p.hints.at(-1).decision.tile, '1m');
+  assert.match(globalSection(p), /保留的全局结论/);
+  assert.doesNotMatch(globalSection(p), /测试结论/);
+  p.destroy();
+});
+
+test('manual global analysis captures input and finishes after live changes with all automatic features off', async () => {
+  const p = panel({ preferences: { useModel: true, danger: false, efficiency: false, strategy: false, modelFromTurn: 7 } }); await flush();
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const request = p.messages.find(m => m.type === 'model:analyze');
+  assert.equal(request.task, 'combined');
+  assert.equal(request.snapshot.selfHand[0], '1m');
+  p.state.selfHand[0] = '9p'; p.state.round.index = 1; p.state.lastStep = 3; p.render();
+  toggle(p, 'feature-danger', true);
+  p.resolve(modelResult()); await pending;
+  assert.equal(p.messages.some(m => m.type === 'model:cancel'), false);
+  assert.match(globalSection(p), /东1局[^]*测试结论/);
+  assert.match(globalSection(p), /警戒/);
+  assert.equal(p.hints.at(-1), null);
+  p.destroy();
+});
+
+test('retry keeps the previous global result during loading, failure and cancellation and replaces only on success', async () => {
+  const p = panel(); await flush();
+  let pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(modelResult()); await pending;
+  pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.match(globalSection(p), /测试结论/);
+  p.resolve({ ok: false, error: '服务暂不可用' }); await pending;
+  assert.match(globalSection(p), /测试结论[^]*服务暂不可用/);
+  pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  p.element('model-cancel').onclick({ isTrusted: true });
+  const replacement = modelResult(); replacement.result.decision.reasons = ['新全局结论'];
+  p.resolve(replacement); await pending;
+  assert.match(globalSection(p), /测试结论/); assert.doesNotMatch(globalSection(p), /新全局结论/);
+  pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(replacement); await pending;
+  assert.match(globalSection(p), /新全局结论/); assert.doesNotMatch(globalSection(p), /测试结论|服务暂不可用/);
+  p.destroy();
 });
