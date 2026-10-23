@@ -45,6 +45,16 @@ test('settings default to disabled chat and old configurations remain chat only'
   legacy.select('mjai'); assert.equal(legacy.el('key').value, 'ENGINE_SECRET');
 });
 
+test('chat settings save and display the resolved request URL from a base URL', async () => {
+  const page = await settings();
+  page.el('endpoint').value = 'https://api.deepseek.com'; page.el('model').value = 'deepseek-flash';
+  await page.submit();
+  assert.equal(page.data.modelConfig.endpoint, 'https://api.deepseek.com/chat/completions');
+  assert.equal(page.data.analysisProviders.chat.endpoint, page.data.modelConfig.endpoint);
+  assert.equal(page.el('endpoint').value, page.data.modelConfig.endpoint);
+  assert.deepEqual(Array.from(page.calls.find(call => call[0] === 'permission')[1].origins), ['https://api.deepseek.com/*']);
+});
+
 test('mjai token is required and permission runs before asynchronous storage', async () => {
   const page = await settings(); page.select('mjai');
   await page.submit(); assert.match(page.el('status').textContent, /Bearer Token/);

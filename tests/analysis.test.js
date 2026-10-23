@@ -30,11 +30,25 @@ test('live own hand, unknown tiles, missing seat, empty scopes and three-player 
   assert.equal(C.snapshot(s, { rivers: 'all' }).rivers.length, 3);
   assert.throws(() => C.snapshot(S.initial(), { game: true }), /开局/);
 });
-test('endpoint only permits HTTPS and loopback HTTP with explicit completion path', () => {
+test('endpoint only permits HTTPS and loopback HTTP', () => {
   assert.equal(E.permissionOrigin('http://localhost:8000/v1/chat/completions'), 'http://localhost/*');
   assert.equal(E.permissionOrigin('https://provider.example:8443/v1/chat/completions'), 'https://provider.example/*');
   for (const url of ['https://example.com/v1/chat/completions', 'http://localhost:8000/v1/chat/completions', 'http://127.0.0.1:8000/chat/completions']) assert.ok(E.endpoint(url));
-  for (const url of ['http://example.com/v1/chat/completions', 'https://user:pass@example.com/chat/completions', 'https://example.com/chat/completions?key=secret', 'https://example.com/v1', 'file:///chat/completions', 'bad']) assert.throws(() => E.endpoint(url));
+  for (const url of ['http://example.com/v1/chat/completions', 'https://user:pass@example.com/chat/completions', 'https://example.com/chat/completions?key=secret', 'file:///chat/completions', 'bad']) assert.throws(() => E.endpoint(url));
+});
+test('chat base URLs normalize once while preserving prefixes and ports', () => {
+  for (const [base, expected] of [
+    ['https://api.deepseek.com', 'https://api.deepseek.com/chat/completions'],
+    ['https://api.deepseek.com/', 'https://api.deepseek.com/chat/completions'],
+    ['https://example.com/v1', 'https://example.com/v1/chat/completions'],
+    ['https://example.com/proxy/v1/', 'https://example.com/proxy/v1/chat/completions'],
+    ['http://localhost:8000/v1/', 'http://localhost:8000/v1/chat/completions'],
+    ['https://example.com/v1/chat/completions', 'https://example.com/v1/chat/completions'],
+    ['https://example.com/v1/chat/completions/', 'https://example.com/v1/chat/completions']
+  ]) {
+    assert.equal(E.endpoint(base).href, expected);
+    assert.equal(E.endpoint(E.endpoint(base).href).href, expected);
+  }
 });
 function worker(overrides = {}) {
   let listener, changed, requests = [], accessLevel, aborted = false, timeout;

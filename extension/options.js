@@ -18,13 +18,13 @@ function show(provider) {
   const c = drafts[provider] || defaults(provider), engine = provider === 'mjai';
   currentProvider = provider;
   $('provider').value = provider; $('enabled').checked = !!c.enabled;
-  $('endpoint').value = c.endpoint || ''; $('endpoint').placeholder = engine ? 'http://127.0.0.1:17341/analyze' : 'https://api.openai.com/v1/chat/completions';
-  $('endpointHint').textContent = engine ? '仅支持 HTTP 的 localhost / 127.0.0.1 本地 /analyze 接口。保存时仅申请该本地服务的访问权限。' : '支持 HTTPS 服务，以及 HTTP 的 localhost / 127.0.0.1 本地服务。保存时仅申请该服务地址的访问权限。';
+  $('endpoint').value = c.endpoint || ''; $('endpoint').placeholder = engine ? 'http://127.0.0.1:17341/analyze' : 'https://api.openai.com/v1';
+  $('endpointHint').textContent = engine ? '仅支持 localhost / 127.0.0.1 的 HTTP /analyze 接口。' : '自动补全 /chat/completions，也可填写完整接口地址。';
   $('model').value = engine ? 'mjai' : c.model || ''; $('model').readOnly = engine;
   $('key').value = c.apiKey || ''; $('key').required = engine;
-  $('key').placeholder = engine ? '本地桥接服务显示的 Bearer Token（必填）' : '本地服务无需密钥时可留空';
-  $('keyLabel').textContent = engine ? 'Bearer Token（必填）' : 'API Key';
-  $('providerHint').textContent = engine ? '可选适配，默认不用。请手动启动本地桥接服务并自备兼容模型（如 Mortal）；插件不捆绑权重。当前仅支持无副露四麻的弃牌、立直意向和跳过。' : '聊天模型提供局面分析与解释。';
+  $('key').placeholder = engine ? '填写本地服务的 Token' : '填写密钥；无密钥的本地服务可留空';
+  $('keyLabel').textContent = engine ? 'Bearer Token' : 'API Key';
+  $('providerHint').textContent = engine ? '需手动启动桥接服务并自备模型，不捆绑权重。仅支持无副露四麻。' : '';
 }
 async function load(generation = operationGeneration) {
   const { modelConfig: c, analysisProviders: saved } = await chrome.storage.local.get(['modelConfig', 'analysisProviders']);
@@ -61,7 +61,10 @@ $('config').onsubmit = async event => {
       await chrome.storage.local.set({ modelConfig: c, analysisProviders: providers });
       if (generation === operationGeneration) drafts = providers;
     });
-    if (generation === operationGeneration) status('设置已保存。返回牌局面板，选择数据后点击分析。');
+    if (generation === operationGeneration) {
+      if (currentProvider === c.provider) $('endpoint').value = c.endpoint;
+      status('已保存。在牌局面板开启“调用模型”即可使用。');
+    }
   } catch (error) { if (generation === operationGeneration) status(error.message); }
 };
 $('disable').onclick = async () => {
