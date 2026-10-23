@@ -35,7 +35,7 @@
   const css = `
     :host{--mj-bg:#20272d;--mj-surface:#2b343b;--mj-text:#f0f2f1;--mj-muted:#b5bfc5;--mj-border:#46515a;--mj-hover:#3a454e;--mj-accent:#8bd4d1;--mj-warn:#ef9b8f;--mj-warning-bg:#3b3028;--mj-alert-bg:#3a2d2c;--mj-scheme:dark;color-scheme:var(--mj-scheme)}
     :host([data-theme="light"]){--mj-bg:#f7f9fa;--mj-surface:#edf2f4;--mj-text:#24353e;--mj-muted:#536771;--mj-border:#becdd4;--mj-hover:#dde7eb;--mj-accent:#126e72;--mj-warn:#ae382d;--mj-warning-bg:#fff1dc;--mj-alert-bg:#fff0ed;--mj-scheme:light}
-    header button[data-theme-toggle]{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:0;border-radius:5px;background:transparent;cursor:pointer}
+    header button[data-theme-toggle]{display:inline-flex;align-items:center;justify-content:center;flex:none;width:28px;height:28px;padding:0;border:1px solid var(--mj-border);border-radius:5px;background:var(--mj-surface);cursor:pointer}
     header button[data-theme-toggle]:hover{background:var(--mj-hover);color:var(--mj-text)}
     header button[data-theme-toggle] svg{display:block;pointer-events:none}
   `;
