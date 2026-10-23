@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "雀魂牌局观察器 · 核对原型",
-  "version": "0.3.0",
-  "description": "观察雀魂牌局，支持用户配置大模型进行局面分析。",
+  "name": "Majsoul Agent",
+  "version": "0.4.0",
+  "description": "雀魂牌局获取、局面分析与复盘，包含有界工具执行和结果校验。",
   "web_accessible_resources": [
     {
       "resources": [

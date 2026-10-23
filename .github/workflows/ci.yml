@@ -24,3 +24,5 @@ jobs:
           node-version: ${{ matrix.node }}
       - run: npm run check
       - run: npm test
+      - run: npm run build
+      - run: npm run eval

@@ -37,7 +37,7 @@ test('endpoint only permits HTTPS and loopback HTTP with explicit completion pat
 function worker(overrides = {}) {
   let listener, changed, requests = [], accessLevel, aborted = false, timeout;
   const config = { enabled: true, model: 'mock-model', endpoint: 'https://provider.example/v1/chat/completions', apiKey: 'test-key', ...overrides.config };
-  const context = { MJAnalysis: A, importScripts() {}, TextDecoder, Uint8Array, AbortController,
+  const context = { MJAnalysis: A, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
     setTimeout: overrides.manualTimer ? fn => { timeout = fn; return 1; } : setTimeout,
     clearTimeout: overrides.manualTimer ? () => {} : clearTimeout,
     chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config }) }, onChanged: { addListener: fn => { changed = fn; } } },

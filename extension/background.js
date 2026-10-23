@@ -1,5 +1,6 @@
 'use strict';
 importScripts('mahjong-analysis.js', 'analysis.js');
+importScripts('harness.js', 'agent.js');
 importScripts('history.js', 'history-storage.js');
 const pending = new Map();
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
@@ -34,31 +35,33 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     const task = MJAnalysis.normalizeTask(message.task);
     const payload = JSON.stringify(message.snapshot);
     if (!payload || payload.length > 60000 || message.snapshot?.format !== 'mj-analysis-v1') throw new Error('局面数据无效或过大。');
-    const prepared = MJAnalysis.prepare(message.snapshot, task);
     if (pending.has(key)) throw new Error('已有分析正在进行。');
     const controller = new AbortController(); pending.set(key, controller);
     const timer = setTimeout(() => controller.abort(), 25000);
     try {
       const latest = (await chrome.storage.local.get('modelConfig')).modelConfig;
       if (controller.signal.aborted || JSON.stringify(latest) !== JSON.stringify(c)) throw new Error('模型设置已变化，请重新发起分析。');
-      const response = await fetch(url.href, { method: 'POST', signal: controller.signal, credentials: 'omit', redirect: 'error',
-        headers: { 'Content-Type': 'application/json', ...(c.apiKey ? { Authorization: 'Bearer ' + c.apiKey } : {}) },
-        body: JSON.stringify({ model: c.model, stream: false, max_tokens: 3000, messages: [
-          { role: 'system', content: prepared.systemPrompt },
-          { role: 'user', content: prepared.userPrompt }] }) });
-      if (!response.ok) throw new Error('模型接口返回 HTTP ' + response.status + '，请检查地址、密钥、模型及额度。');
-      // Bound the response while reading, including providers that omit Content-Length.
-      const reader = response.body.getReader(); const chunks = []; let size = 0;
-      while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length;
-        if (size > 1024 * 1024) { await reader.cancel(); throw new Error('模型响应过大。'); } chunks.push(value); }
-      const bytes = new Uint8Array(size); let offset = 0;
-      for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-      let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('接口没有返回有效 JSON，请检查是否为 OpenAI 兼容接口。'); }
-      const content = data.choices?.[0]?.message?.content;
-      if (typeof content !== 'string' || !content.trim()) throw new Error('模型未返回文本内容，请检查模型是否支持 Chat Completions。');
-      if (content.length > 32000) throw new Error('模型分析结果过长，请重试。');
-      const result = MJAnalysis.parseResult(content, prepared);
-      return { ok: true, result, localAnalysis: prepared.data.localAnalysis, model: c.model };
+      const analysis = await MJAgent.run({ snapshot: message.snapshot, task, signal: controller.signal,
+        explain: async (prepared, { signal }) => {
+          const response = await fetch(url.href, { method: 'POST', signal, credentials: 'omit', redirect: 'error',
+            headers: { 'Content-Type': 'application/json', ...(c.apiKey ? { Authorization: 'Bearer ' + c.apiKey } : {}) },
+            body: JSON.stringify({ model: c.model, stream: false, max_tokens: 3000, messages: [
+              { role: 'system', content: prepared.systemPrompt },
+              { role: 'user', content: prepared.userPrompt }] }) });
+          if (!response.ok) throw new Error('模型接口返回 HTTP ' + response.status + '，请检查地址、密钥、模型及额度。');
+          // Bound the response while reading, including providers that omit Content-Length.
+          const reader = response.body.getReader(); const chunks = []; let size = 0;
+          while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length;
+            if (size > 1024 * 1024) { await reader.cancel(); throw new Error('模型响应过大。'); } chunks.push(value); }
+          const bytes = new Uint8Array(size); let offset = 0;
+          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
+          let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('接口没有返回有效 JSON，请检查是否为 OpenAI 兼容接口。'); }
+          const content = data.choices?.[0]?.message?.content;
+          if (typeof content !== 'string' || !content.trim()) throw new Error('模型未返回文本内容，请检查模型是否支持 Chat Completions。');
+          if (content.length > 32000) throw new Error('模型分析结果过长，请重试。');
+          return content;
+        } });
+      return { ok: true, ...analysis, model: c.model };
     } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
   })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或超过25秒，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message) }));
   return true;

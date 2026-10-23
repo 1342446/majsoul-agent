@@ -7,8 +7,8 @@
 使用Node.js 22或更新版本；没有运行依赖和构建步骤，无需安装Python或启动调试端口。
 
 ```sh
-git clone https://github.com/1342446/majsoul-observer.git
-cd majsoul-observer
+git clone https://github.com/1342446/majsoul-observer-public.git
+cd majsoul-observer-public
 npm run check
 npm test
 ```
@@ -22,6 +22,8 @@ npm test
 - 界面变更核对桌面及窄窗口、拖动、收起和牌谱模式；不要用模拟页面宣称真实牌局已验证。
 - 运行 `npm run check` 与 `npm test`，在PR中说明问题、变化和验证范围。
 - 牌面由 `scripts/generate-tiles.mjs` 生成；修改生成器后运行 `npm run tiles`，不要加入游戏截图替代SVG。
+- Agent编排修改`extension/agent.js`，执行预算与轨迹修改`extension/harness.js`，复盘与回归入口在`agent/`。保持模型传输和密钥在后台，不放进获取器。
+- 分发变更运行`npm run build`，确认仅获取器包不含模型代码、设置页或模型主机权限。`npm run eval`只是人工向听回归，不替代真实牌谱或模型质量评估。
 
 ## 多语言介绍
 

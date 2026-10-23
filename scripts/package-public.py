@@ -14,7 +14,7 @@ ROOT_FILES = [
     '.gitignore', '.gitattributes', 'LICENSE', 'README.md', 'README.en.md', 'README.ja.md', 'CHANGELOG.md', 'CONTRIBUTING.md',
     'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'ARCHITECTURE.md', 'VALIDATION.md', 'package.json'
 ]
-SOURCE_DIRS = ['extension', 'tests', 'scripts', '.github', 'docs']
+SOURCE_DIRS = ['extension', 'agent', 'tests', 'scripts', '.github', 'docs']
 SECRET_PATTERNS = [
     rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
     rb'\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{24,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16})\b'
@@ -116,7 +116,7 @@ def main(output=None):
     version = manifest['version']
     if version != package['version'] or not re.fullmatch(r'\d+\.\d+\.\d+', version):
         raise ValueError('Invalid or inconsistent version')
-    if '**' + version + ' ' not in (ROOT / 'README.md').read_text(encoding='utf-8'):
+    if not re.search(r'\*\*' + re.escape(version) + r'(?:\s|\*\*)', (ROOT / 'README.md').read_text(encoding='utf-8')):
         raise ValueError('README must describe the selected snapshot version')
     tiles = ROOT / 'extension/tiles'
     if len(list(tiles.glob('*.svg'))) != 37 or any(tiles.glob('*.png')):
@@ -125,14 +125,26 @@ def main(output=None):
         raise ValueError('Missing synthetic public preview')
     output = output or ROOT / 'dist'
     output.mkdir(exist_ok=True)
-    source = output / ('majsoul-observer-source-' + version + '.zip')
-    extension = output / ('majsoul-observer-' + version + '.zip')
-    write_zip(source, [(path, 'majsoul-observer/' + path.relative_to(ROOT).as_posix()) for path in files])
-    extension_files = [(path, path.relative_to(ROOT / 'extension').as_posix()) for path in files if inside(path, ROOT / 'extension')]
-    extension_files += [(ROOT / name, name) for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md']]
-    write_zip(extension, extension_files)
+    agent_project = (ROOT / 'extension/agent.js').is_file()
+    project = 'majsoul-agent' if agent_project else 'majsoul-observer'
+    source = output / (project + '-source-' + version + '.zip')
+    write_zip(source, [(path, project + '/' + path.relative_to(ROOT).as_posix()) for path in files])
+    archives = [source]
+    if agent_project:
+        subprocess.run(['node', str(ROOT / 'scripts/build-extensions.mjs'), str(output)], check=True)
+        for profile in ['agent', 'collector']:
+            directory = output / ('majsoul-' + profile + '-' + version)
+            archive = Path(str(directory) + '.zip')
+            write_zip(archive, [(path, path.relative_to(directory).as_posix()) for path in directory.rglob('*') if path.is_file()])
+            archives.append(archive)
+    else:
+        extension = output / ('majsoul-observer-' + version + '.zip')
+        extension_files = [(path, path.relative_to(ROOT / 'extension').as_posix()) for path in files if inside(path, ROOT / 'extension')]
+        extension_files += [(ROOT / name, name) for name in ['LICENSE', 'THIRD_PARTY_NOTICES.md']]
+        write_zip(extension, extension_files)
+        archives.append(extension)
     checksums = []
-    for path in [source, extension]:
+    for path in archives:
         digest = hashlib.sha256(path.read_bytes()).hexdigest()
         checksums.append(digest + '  ' + path.name)
         print(path.name + ': ' + digest)

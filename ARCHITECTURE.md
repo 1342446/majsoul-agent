@@ -1,5 +1,7 @@
 # 项目架构
 
+0.4.0以 **Majsoul Agent** 为整体名称，提供完整版与独立牌局获取器。`extension/agent.js`复用0.3.0分析能力编排任务，`extension/harness.js`负责有界执行、取消和脱敏轨迹；`agent/`提供离线复盘与回归评测。完整说明见 [Agent与harness](docs/AGENT.md)。
+
 这是无构建步骤、无第三方运行依赖的 Manifest V3 扩展。`extension/` 可直接作为解压缩扩展加载。采集、状态、展示和模型网络访问各自独立；新增模型功能复用现有状态，不重新读取或操作游戏。
 
 ## 目录与职责
@@ -17,6 +19,11 @@
 | `extension/analysis.js` | 授权快照、逐任务合同与提示词、JSON Schema、严格结果校验、接口验证 | ISOLATED / 后台 / 设置 / Node 测试 |
 | `extension/analysis-panel.js` | 数据范围与任务选择、发送预览、结构化牌面建议、本地效率表和过期提示 | ISOLATED 世界 |
 | `extension/background.js` | 身份校验、读取配置、验证授权、添加密钥、调用模型、取消与超时 | 扩展 Service Worker |
+| `extension/agent.js` | 任务计划、已授权快照、本地分析和模型解释工具接线 | 后台 / Node |
+| `extension/harness.js` | 工具注册、步数与时间预算、取消、无内容运行轨迹 | 后台 / Node |
+| `extension/collector-background.js` | 独立获取器的历史存储后台，无模型功能 | Collector Service Worker |
+| `agent/review.cjs` / `agent/eval.cjs` | 按游标的本地复盘、人工回归报告 | Node CLI |
+| `scripts/build-extensions.mjs` | 从共享源码生成完整版与仅获取器两个安装目录 | Node |
 | `extension/options.html/js/css` | 开关、接口、模型、密钥；主机权限申请、保存与清除 | 扩展设置页 |
 | `extension/tiles/` | 本地牌面资源 | 扩展静态资源 |
 | `tests/` | Node 协议、采集、状态、分析测试与离线浏览器预览 | 本地 |

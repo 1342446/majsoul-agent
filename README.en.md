@@ -1,4 +1,4 @@
-# Majsoul Observer · 雀魂牌局观察器
+# Majsoul Agent · Mahjong analysis and review
 
 [简体中文](README.md) | **English** | [日本語](README.ja.md)
 
@@ -6,7 +6,7 @@ A browser extension for the Mahjong Soul web client. Inspect the table in an in-
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
-This document describes **0.3.0**. The Edge extension environment and offline simulation have been checked; Chrome and other Chromium browsers still need separate testing. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+This document describes **0.4.0**. It integrates the 0.3.0 analysis modules with a separate Agent layer, a harness, and a collector-only distribution. Earlier Edge and offline checks do not validate the new installation profiles; those profiles and other Chromium browsers still need browser testing. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
 
 ![Offline simulated panel with Chinese UI; not a live capture](docs/images/observer-preview.png)
 
@@ -22,15 +22,35 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 ## Installation
 
+| Package | Capabilities |
+| --- | --- |
+| `majsoul-agent-0.4.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
+| `majsoul-collector-0.4.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
+
+Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
+
 1. Download and extract the source ZIP, or clone the repository. For a source checkout, use the **`extension/` directory**.
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.
 3. Choose **Load unpacked** and select that directory. For the dedicated extension ZIP, select the extracted directory that directly contains `manifest.json`.
 4. Refresh the Mahjong Soul page so the collector loads before the game connection is established, then enter a game or reopen a replay.
-5. The `牌局观察器` panel appears on the right. Drag its title bar or click `收起` to collapse it. Recent events and collection status are collapsed by default.
+5. The `Majsoul Agent` or `雀魂牌局获取器` panel appears on the right. Drag its title bar or click `收起` to collapse it. Recent events and collection status are collapsed by default.
 
 After updating, reload the extension in the browser’s extension manager, then refresh the game. Refreshing resets your replay position. Existing connections and previously downloaded replay data cannot be read retroactively.
 
 Only **`https://game.maj-soul.com/*`** is currently matched. Other regional domains, Firefox, Safari, and the Steam desktop client are not supported. Architectural compatibility with Chrome or Brave is not a substitute for testing.
+
+## Agent and harness
+
+The Agent maps danger, tile-efficiency, and combined tasks to bounded workflows. The harness executes registered tools, limits steps and runtime, propagates cancellation, and records tool metadata without game payloads or credentials. The full edition runs snapshot validation → local analysis and prompt preparation → model explanation → result validation. Successful results include a collapsible `Agent 运行记录` trace. This first version uses a fixed plan and at most one model request per run; the model does not select tools autonomously or retry indefinitely.
+
+Review a collector `mj-observer-v1` JSON export locally with Node.js 22+:
+
+```sh
+npm run review -- observation.json --seat 0 --hand --cursor 12
+npm run eval
+```
+
+`--seat` is a protocol seat ID from 0 to 3. `--hand` explicitly includes your own hand, which is excluded by default. For replays, `--cursor` applies only the first N events and never uses future states. Omit it for live exports, which use the exported snapshot. The CLI performs local analysis without a model request. The built-in evaluation contains three synthetic shanten regressions; it does not measure model quality or playing strength. See [Agent and harness](docs/AGENT.md) (Chinese).
 
 ## LLM setup
 

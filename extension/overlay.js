@@ -216,7 +216,7 @@
       ${displayLive && s.selfSeat === i ? '' : riverHtml(p, S.seatWind(s, i) + '家牌河')}
       ${p.melds.length ? '<div class="tiles" style="margin-top:5px">副露 ' + p.melds.map(m => '<span>' + m.tiles.map(tileHtml).join('') + '</span>').join(' ') + '</div>' : ''}</div>`).join('');
     shadow.innerHTML = `<style>${css}</style><section class="shell ${collapsed ? 'pill' : ''} ${connected ? 'connected' : ''}" aria-label="雀魂牌局观察器">
-      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>牌局观察器</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
+      <header title="拖动标题栏移动面板"><span class="indicator"></span><strong>${globalThis.MJAnalysisPanel ? 'Majsoul Agent' : '雀魂牌局获取器'}</strong><button id="collapse" aria-label="${collapsed ? '展开面板' : '收起面板'}">${collapsed ? '展开' : '收起'}</button></header>
       ${collapsed ? '' : `<div class="body"><div class="controls"><select id="mode" aria-label="数据来源"><option value="live" ${mode === 'live' ? 'selected' : ''}>实时消息</option><option value="replay" ${mode === 'replay' ? 'selected' : ''}>牌谱记录</option></select>
       <select id="seat" aria-label="自家座风" ${s.round && !historical ? '' : 'disabled'}><option value="" ${s.selfSeat === null ? 'selected' : ''}>自家：${mode === 'replay' ? '请选择' : '待识别'}</option>${s.round ? s.players.slice(0, s.scores.length === 3 ? 3 : 4).map((_, i) => `<option value="${i}" ${s.selfSeat === i ? 'selected' : ''}>自家：${S.seatWind(s, i)}</option>`).join('') : ''}</select><button id="export">导出核对记录</button></div>
       ${historical ? '<div class="history-view">历史记录 · ' + roundText(s) + ' · ' + s.honba + '本场 <button id="history-return">返回当前牌局</button></div>' : ''}

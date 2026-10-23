@@ -14,6 +14,9 @@ if (!existsSync(join(root, 'extension', manifest.background.service_worker))) th
 for (const file of readdirSync(join(root, 'extension')).filter(name => name.endsWith('.js'))) {
   execFileSync(process.execPath, ['--check', join(root, 'extension', file)]);
 }
+for (const file of (existsSync(join(root, 'agent')) ? readdirSync(join(root, 'agent')) : []).filter(name => name.endsWith('.cjs'))) {
+  execFileSync(process.execPath, ['--check', join(root, 'agent', file)]);
+}
 execFileSync(process.execPath, [join(root, 'scripts/generate-tiles.mjs'), '--check'], { stdio: 'inherit' });
 const tileFiles = readdirSync(join(root, 'extension/tiles'));
 if (tileFiles.some(name => /\.(png|jpe?g|webp)$/i.test(name))) throw new Error('Unexpected raster tile asset');

@@ -17,7 +17,8 @@
     return `${r.danger.length ? '<h4>逐对手危险牌</h4>' + r.danger.map(d => `<div class="analysis-card">${face(d.tile)}${d.opponents.map(o => `<p>${escape(response.seatLabels?.[o.seat] || ('座位 ' + o.seat))} · ${escape(riskNames[o.level])}：${reasons(o.reasons)}</p>`).join('')}</div>`).join('') : ''}
       ${r.efficiency.length ? '<h4>牌效率解释</h4>' + r.efficiency.map(e => `<div class="analysis-card">${face(e.tile)} ${reasons(e.reasons)}</div>`).join('') : ''}
       <h4>建议</h4><p>${escape(actionNames[r.decision.action])} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
-      ${r.limitations.length ? `<p class="warn">${reasons(r.limitations)}</p>` : ''}`;
+      ${r.limitations.length ? `<p class="warn">${reasons(r.limitations)}</p>` : ''}
+      ${response.trace ? `<details><summary>Agent 运行记录</summary><ol>${response.trace.events.map(event => `<li>${escape(event.tool)} · ${escape(event.status)} · ${escape(event.elapsedMs)} ms</li>`).join('')}</ol></details>` : ''}`;
   }
   function localHtml(local, phase) {
     const e = local?.efficiency;
