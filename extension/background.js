@@ -25,7 +25,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (message?.type === 'model:settings' && game) { chrome.runtime.openOptionsPage(); respond({ ok: true }); return; }
   if (message?.type === 'model:preferences' && game) {
     const p = message.preferences || {}, preferences = {};
-    for (const key of ['danger', 'efficiency', 'strategy', 'automatic', 'useModel', 'consent']) preferences[key] = p[key] === true;
+    for (const key of ['danger', 'efficiency', 'strategy', 'automatic', 'useModel']) preferences[key] = p[key] === true;
     for (const [key, min, max, fallback] of [['modelFromTurn', 1, 18, 1], ['interval', 1, 60, 8], ['limit', 1, 100, 20]]) preferences[key] = Number.isFinite(p[key]) ? Math.min(max, Math.max(min, Math.trunc(p[key]))) : fallback;
     chrome.storage.local.set({ analysisPreferences: preferences }).then(() => respond({ ok: true })).catch(() => respond({ ok: false }));
     return true;

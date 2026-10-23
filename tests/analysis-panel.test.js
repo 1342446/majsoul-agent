@@ -265,12 +265,12 @@ test('compact summary keeps hand and metadata folded while candidates switch exp
   assert.match(main(), /analysis-decision[^]*1m\.svg/);
 });
 
-test('optional engine cannot send before model consent', async () => {
-  let calls = 0;
-  const p = panel({ provider: 'mjai', preferences: { useModel: true, consent: false }, engineRequest: () => { calls++; return { events: [] }; } }); await flush();
-  await p.element('model-run').onclick({ isTrusted: true });
-  assert.equal(calls, 0); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
-  assert.match(p.html(), /确认数据授权/);
+test('enabling model calls needs no separate consent, including legacy consent=false', async () => {
+  const p = panel({ provider: 'mjai', preferences: { useModel: true, consent: false }, engineRequest: () => ({ events: [] }) }); await flush();
+  assert.doesNotMatch(p.html(), /id="model-consent"|确认模型数据授权/);
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), true);
+  p.resolve(modelResult()); await pending; p.destroy();
 });
 
 test('engine preview matches its event input and provider switching clears results and hints', async () => {
@@ -341,13 +341,12 @@ test('model threshold uses local analysis before the selected turn and model ana
   p.resolve(modelResult()); await flush(); p.destroy();
 });
 
-test('model off, consent revocation, replay and disabled features suppress automatic model calls', async () => {
+test('model off, replay and disabled features suppress automatic model calls', async () => {
   const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true } }); await flush();
   p.state.turn = p.state.selfSeat; p.render();
   toggle(p, 'model-use', false); p.fireTimer(); await flush();
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
-  toggle(p, 'model-use', true); p.element('model-consent').onclick({ isTrusted: true }); assert.equal(p.timers.size, 0);
-  p.element('model-consent').onclick({ isTrusted: true });
+  toggle(p, 'model-use', true); assert.equal(p.timers.size, 1);
   p.element('analysis-mode-replay').onclick(); assert.equal(p.timers.size, 0);
   for (const key of ['danger', 'efficiency', 'strategy']) toggle(p, 'feature-' + key, false);
   await p.element('model-run').onclick({ isTrusted: true }); assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);

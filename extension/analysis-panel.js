@@ -2,7 +2,7 @@
   'use strict';
   const available = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
   const selection = { game: true, rivers: 'all', hand: true };
-  const defaults = () => ({ danger: true, efficiency: true, strategy: true, automatic: false, useModel: false, consent: false, modelFromTurn: 1, interval: 8, limit: 20 });
+  const defaults = () => ({ danger: true, efficiency: true, strategy: true, automatic: false, useModel: false, modelFromTurn: 1, interval: 8, limit: 20 });
   let previousDiscards = 0;
   let preferences = defaults(), preferencesLoaded = false, autoTimer = null, lastPosition = '', pendingFingerprint = '', lastAutoKey = '', roundKey = '', autoCalls = 0, lastModelAt = 0;
   function selectedTask() { return preferences.strategy || (preferences.danger && preferences.efficiency) ? 'combined' : preferences.danger ? 'danger' : 'efficiency'; }
@@ -38,7 +38,7 @@
     const id = ++requestId;
     try {
       const data = snapshot(), external = usesModel(data);
-      if (external && (!available || !enabled || !preferences.consent)) throw new Error('请先接入并开启模型，并确认数据授权。');
+      if (external && (!available || !enabled)) throw new Error('请先在模型设置中接入并开启模型。');
       const actualProvider = external ? provider : 'local';
       const extra = external && provider === 'mjai' ? { engineRequest: engineRequest() } : {};
       const captured = fingerprint(), seatLabels = current.seatLabels.slice();
@@ -65,7 +65,7 @@
     if (!Number.isInteger(data.selfSeat) || data.game?.recentActor !== data.selfSeat || !local?.canDiscard) return;
     const key = fingerprint(); if (lastAutoKey === key) return;
     const external = usesModel(data);
-    if (external && (!enabled || !preferences.consent || !available || autoCalls >= preferences.limit)) return;
+    if (external && (!enabled || !available || autoCalls >= preferences.limit)) return;
     const delay = external ? Math.max(350, preferences.interval * 1000 - (Date.now() - lastModelAt)) : 100;
     autoTimer = setTimeout(() => { autoTimer = null; if (key !== fingerprint()) return; lastAutoKey = key; runAnalysis(true); }, delay);
   }
@@ -238,7 +238,7 @@
       ${preferences.modelFromTurn > 1 ? '<p class="muted">未达指定巡数或巡目未知时，仅本地分析。</p>' : ''}
       <label>调用间隔（秒） <input id="model-interval" type="number" min="1" max="60" value="${preferences.interval}"></label>
       <label title="仅限制自动调用，手动分析不受限。">每局调用上限 <input id="model-limit" type="number" min="1" max="100" value="${preferences.limit}"> <span class="muted">已用 ${autoCalls} 次</span></label>
-      ${preferences.useModel ? `<p class="muted">向配置的服务发送公开牌局与自家手牌，可能产生费用。</p><button id="model-consent">${preferences.consent ? '撤回授权' : '授权模型分析'}</button>` : '<p class="muted">本地计算，不发送数据。</p>'}
+      ${!preferences.useModel ? '<p class="muted">本地计算，不发送数据。</p>' : ''}
       <div class="analysis-calibration"><button title="${current.hintsReady ? '首次使用需校准手牌位置，可随时重校。' : '进入游戏牌桌后可校准手牌提示。'}" id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button></div><button id="model-preview">${preview ? '收起' : '查看'}分析数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
     const markup = `<section class="analysis" aria-label="模型分析">
       ${modeControls}${replayControls}
@@ -252,7 +252,7 @@
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
       <div class="analysis-main" role="status" aria-live="polite">
       ${stale ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}
-      ${r ? `<div class="analysis-decision"><span>${escape(decisionLabel(result))}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : preferences.automatic ? '等待自己的出牌决策' : '点击分析当前局面'}</strong><p class="muted">${!hasFeatures() ? '请至少开启一项辅助功能。' : preferences.useModel ? !preferences.consent ? '请展开设置，确认模型数据授权。' : !enabled ? '请在模型设置中接入并开启模型。' : `第 ${preferences.modelFromTurn} 巡起调用模型，此前使用本地分析。` : '仅本地计算，不调用模型。'}</p></div>`}
+      ${r ? `<div class="analysis-decision"><span>${escape(decisionLabel(result))}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : `<div class="analysis-empty"><strong>${busy ? '正在读取所选局面…' : !current.round ? '等待开局数据' : preferences.automatic ? '等待自己的出牌决策' : '点击分析当前局面'}</strong><p class="muted">${!hasFeatures() ? '请至少开启一项辅助功能。' : preferences.useModel ? !enabled ? '请在模型设置中接入并开启模型。' : `第 ${preferences.modelFromTurn} 巡起调用模型，此前使用本地分析。` : '仅本地计算，不调用模型。'}</p></div>`}
       ${replay ? '' : current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
       ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
       </div>
@@ -290,7 +290,6 @@
     $('model-auto').onchange = e => { if (e.isTrusted) changePreferences({ automatic: e.target.checked }); };
     $('model-use').onchange = e => { if (e.isTrusted) changePreferences({ useModel: e.target.checked }); };
     $('model-preset').onclick = e => { if (e.isTrusted) changePreferences({ danger: true, efficiency: true, strategy: true }); };
-    if (preferences.useModel) $('model-consent').onclick = e => { if (e.isTrusted) changePreferences({ consent: !preferences.consent }); };
     $('model-from-turn').value = preferences.modelFromTurn === 1 ? '1' : '7';
     $('model-from-turn').onchange = e => { if (e.isTrusted) changePreferences({ modelFromTurn: Number(e.target.value) === 1 ? 1 : 7 }); };
     for (const [id, key, min, max] of [['model-turn-number', 'modelFromTurn', 2, 18], ['model-interval', 'interval', 1, 60], ['model-limit', 'limit', 1, 100]]) {

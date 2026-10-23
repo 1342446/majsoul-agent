@@ -2,7 +2,7 @@
 
 [简体中文](README.md) | **English** | [日本語](README.ja.md)
 
-A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically after consent. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
+A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically when enabled. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
 
 **Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
 
@@ -73,14 +73,14 @@ The full edition accepts your own model API; no project-specific service or acco
 
 Local analysis is available without an API. The card offers danger, hand-efficiency and offense/defense switches, with a combined preset. Model calls and automatic analysis are both off by default.
 
-1. To use a model, open `分析设置 · 调用时机与数据授权`, configure your service in `模型设置`, and grant its host permission.
-2. Enable `调用模型` and confirm consent to send public table information and your own hand. Your seat must be known; opponents' hidden tiles and account credentials are excluded.
+1. To use a model, open `分析设置`, configure your service in `模型设置`, and grant its host permission.
+2. The configuration page explains data sharing and possible fees. Enable `调用模型` to send public table information and your own hand. Your seat must be known; opponents' hidden tiles and account credentials are excluded.
 3. Analyze manually, or enable `自动分析`. Choose every turn or from turn N onward (initially turn 7, adjustable from 2–18). Earlier turns use local calculations. The collector tracks each player’s next discard number from a continuously observed opening; calls, kans, north extractions and replacement draws alone do not increment it. Missing events, disconnections or absent sequence numbers make it unknown. From-turn-N mode then stays local until a new complete opening; every-turn mode requires no turn threshold.
 4. Automatic calls run only at your own discard decisions, combining enabled modules in one request. The default minimum interval is 8 seconds, with 20 automatic model calls per round; both are adjustable. Replays remain manual. Changes invalidate old results and cancel pending requests. Round counters reset when the panel is reloaded.
 
-With model calls disabled, local shanten, improving tiles and genbutsu/suji/kabe evidence require no model request. Integrated strategic explanations require a model. You can inspect analysis data or revoke model consent in settings.
+With model calls disabled, local shanten, improving tiles and genbutsu/suji/kabe evidence require no model request. Integrated strategic explanations require a model. You can inspect analysis data in settings and disable `调用模型` to stop sending data.
 
-To annotate game tiles, open `分析设置 · 调用时机与数据授权 → 校准手牌提示` at the table. Position the frame over 13 concealed slots, the gap, and the drawn slot, then confirm. Calibration is saved relative to a single visible game Canvas. It assumes manzu, pinzu, souzu, and honors in that order, with shorter hands aligned left after calls; it does not detect individual tile coordinates or follow manual rearrangements. Recalibrate after layout changes or misalignment. Unknown hands, multiple canvases, replays, and historical views receive no markers. Current output shows recommendations and qualitative risk, not fabricated probabilities derived from preferences or unseen-tile upper bounds.
+To annotate game tiles, open `分析设置 → 校准手牌提示` at the table. Position the frame over 13 concealed slots, the gap, and the drawn slot, then confirm. Calibration is saved relative to a single visible game Canvas. It assumes manzu, pinzu, souzu, and honors in that order, with shorter hands aligned left after calls; it does not detect individual tile coordinates or follow manual rearrangements. Recalibrate after layout changes or misalignment. Unknown hands, multiple canvases, replays, and historical views receive no markers. Current output shows recommendations and qualitative risk, not fabricated probabilities derived from preferences or unseen-tile upper bounds.
 
 The three analysis tasks use separate data contracts and modular prompts. Danger analysis retains selected players’ ordered discards, discard-from-hand/draw distinctions, riichi, and melds. Tile-efficiency analysis sends only your hand, melds, rules, and authorized visible-tile counts, excluding full discard histories. Combined offense/defense analysis uses both modules in one request.
 

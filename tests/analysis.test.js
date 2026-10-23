@@ -236,7 +236,7 @@ test('analysis preferences persist only whitelisted booleans and bounded schedul
   assert.equal(response.ok, true);
   const status = await w.call({ type: 'model:status' });
   assert.equal(status.preferences.modelFromTurn, 18); assert.equal(status.preferences.interval, 1); assert.equal(status.preferences.limit, 20);
-  assert.equal(status.preferences.useModel, true); assert.equal('apiKey' in status.preferences, false);
+  assert.equal(status.preferences.useModel, true); assert.equal('consent' in status.preferences, false); assert.equal('apiKey' in status.preferences, false);
   assert.equal(w.requests.length, 0);
   assert.equal(await w.call({ type: 'model:preferences', preferences: {} }, { ...w.sender, frameId: 1 }), undefined);
 });

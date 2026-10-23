@@ -10,7 +10,8 @@
 <p id="endpointHint" class="hint">自动补全 /chat/completions，也可填写完整接口地址。</p>
 <label for="model">模型名称</label><input id="model" placeholder="例如 deepseek-chat" maxlength="200" required>
 <label for="key" id="keyLabel">API Key</label><input id="key" type="password" autocomplete="off" placeholder="本地服务无需密钥时可留空" maxlength="4096">
+<p class="hint">开启模型调用后，将向所配置的服务发送公开牌局信息和自家手牌，可能产生费用。</p>
 <div class="actions"><button type="submit">保存设置</button><button type="button" id="disable">关闭分析</button><button type="button" id="clear">清除配置</button></div>
 </form><p id="status" role="status" aria-live="polite"></p>
-<p class="hint footnote">密钥仅保存在本机。授权数据由服务商处理，调用可能产生费用。</p>
+<p class="hint footnote">密钥仅保存在本机。</p>
 </main><script src="adapters/model-endpoint.js"></script><script src="adapters/engine-endpoint.js"></script><script src="options.js"></script></body></html>
