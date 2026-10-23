@@ -15,7 +15,12 @@
       winners: (Array.isArray(r.winners) ? r.winners : []).filter(w => Number.isInteger(w.seat) && w.seat >= 0 && w.seat < 4).slice(0, 3)
         .map(w => ({ seat: w.seat, tile: tile(w.tile), tsumo: !!w.tsumo, han: number(w.han), fu: number(w.fu) }))
     } : null;
-    return { source: s.source === 'replay' ? 'replay' : 'live',
+    const count = s.scores?.length === 3 ? 3 : 4, progress = s.turnProgress;
+    const turnsKnown = progress?.status === 'known' && progress.source === 'events' && Array.isArray(progress.bySeat)
+      && progress.bySeat.length === count && progress.bySeat.every(n => Number.isInteger(n) && n >= 1 && n <= 145);
+    const reasons = ['missing_start', 'event_gap', 'missing_sequence', 'unsupported_event', 'collection_error', 'disconnected', 'invalid_event', 'legacy'];
+    const turnProgress = { status: turnsKnown ? 'known' : 'unknown', source: 'events', bySeat: turnsKnown ? progress.bySeat.slice() : Array(count).fill(null), reason: turnsKnown ? null : reasons.includes(progress?.reason) ? progress.reason : 'legacy' };
+    return { turnProgress, source: s.source === 'replay' ? 'replay' : 'live',
       selfSeat: Number.isInteger(s.selfSeat) && s.selfSeat >= 0 && s.selfSeat < 4 ? s.selfSeat : null,
       phase: s.phase === 'ended' ? 'ended' : 'playing', round: { wind: number(s.round.wind), index: number(s.round.index) },
       honba: number(s.honba), sticks: number(s.sticks), remaining: s.remaining === null ? null : number(s.remaining),

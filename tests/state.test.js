@@ -218,3 +218,47 @@ test('discard method preserves explicit booleans and normalizes missing or inval
   assert.equal(decoded.tsumogiri, false);
   assert.equal(S.apply(S.apply(S.initial(), round()), decoded).players[0].discards[0].tsumogiri, false);
 });
+
+test('turn progress requires an observed opening, advances on discard once and ignores replacement draws', () => {
+  let s = S.apply(S.initial(), evt('DealTile', { seat: 2, tile: '?', step: 20 }));
+  assert.equal(s.turnProgress.status, 'unknown'); assert.deepEqual(s.turnProgress.bySeat, [null,null,null,null]);
+  s = S.apply(s, round()); assert.deepEqual(s.turnProgress.bySeat, [1,1,1,1]);
+  s = S.apply(s, evt('DealTile', { seat: 2, tile: '?', step: 1 }));
+  const discard = evt('DiscardTile', { seat: 2, tile: '1p', step: 2 });
+  s = S.apply(s, discard); s = S.apply(s, discard);
+  assert.deepEqual(s.turnProgress.bySeat, [1,1,2,1]);
+  s = S.apply(s, evt('AnGangAddGang', { seat: 2, meldType: 3, tile: '2p', step: 3 }));
+  s = S.apply(s, evt('DealTile', { seat: 2, tile: '?', step: 4 }));
+  s = S.apply(s, evt('BaBei', { seat: 2, step: 5 }));
+  s = S.apply(s, evt('DealTile', { seat: 2, tile: '?', step: 6 }));
+  assert.deepEqual(s.turnProgress.bySeat, [1,1,2,1]);
+});
+
+test('calls preserve turn count until discard, including the called-away tile in the source history', () => {
+  let s = S.apply(S.initial(), round());
+  s = S.apply(s, evt('DiscardTile', { seat: 0, tile: '8s', step: 1 }));
+  s = S.apply(s, evt('ChiPengGang', { seat: 1, meldType: 1, tiles: ['8s','8s','8s'], froms: [1,0,1], step: 2 }));
+  assert.deepEqual(s.turnProgress.bySeat, [2,1,1,1]);
+  s = S.apply(s, evt('DiscardTile', { seat: 1, tile: s.selfHand[0], step: 3 }));
+  assert.deepEqual(s.turnProgress.bySeat, [2,2,1,1]); assert.equal(s.players[0].discards[0].called, true);
+});
+
+test('sequence gaps, absent sequence and unsupported events keep turns unknown until a new opening', () => {
+  for (const bad of [evt('DealTile', { seat: 2, tile: '?', step: 4 }), evt('DealTile', { seat: 2, tile: '?' }), evt('Unsupported', { name: 'ActionUnknown', step: 1 })]) {
+    let s = S.apply(S.apply(S.initial(), round()), bad);
+    assert.equal(s.turnProgress.status, 'unknown');
+    s = S.apply(s, evt('DiscardTile', { seat: 2, tile: '1p', step: 5 }));
+    assert.equal(s.turnProgress.status, 'unknown'); assert.ok(s.turnProgress.bySeat.every(n => n === null));
+    s = S.apply(s, round()); assert.equal(s.turnProgress.status, 'known');
+  }
+});
+
+test('turn tracking is independent of own-seat discovery, supports sanma and detects replay index gaps', () => {
+  const opening = { ...round(), operation: undefined, scores: [35000,35000,35000] };
+  let s = S.apply(S.initial(), opening); s = S.apply(s, evt('DiscardTile', { seat: 2, tile: '1p', step: 1 }));
+  assert.equal(s.selfSeat, null); assert.deepEqual(s.turnProgress.bySeat, [1,1,2]);
+  s = S.selectSelfSeat(s, 2); assert.deepEqual(s.turnProgress.bySeat, [1,1,2]);
+  let r = S.apply(S.initial('replay'), { ...opening, source: 'replay', recordIndex: 10 });
+  r = S.apply(r, { kind: 'DiscardTile', source: 'replay', seat: 2, tile: '1p', recordIndex: 12 });
+  assert.equal(r.turnProgress.status, 'unknown'); assert.equal(r.turnProgress.reason, 'event_gap');
+});

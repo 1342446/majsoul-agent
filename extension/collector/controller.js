@@ -104,14 +104,17 @@
       else if (m.type === 'diagnostic') {
         diagnostics.push(m.payload); if (diagnostics.length > 60) diagnostics.shift();
         if (['动作解码', '消息读取', '牌局响应', '断线恢复'].includes(m.payload?.stage)) {
-          live.complete = false;
+          live = S.invalidateTurns(live, 'collection_error'); live.complete = false;
           if (!live.warnings.includes('采集发生错误，请检查采集状态并重新从开局采集')) live.warnings.push('采集发生错误，请检查采集状态并重新从开局采集');
         }
       }
-      else if (m.type === 'connection') connections.set(m.payload.socketId, m.payload.state);
+      else if (m.type === 'connection') {
+        connections.set(m.payload.socketId, m.payload.state);
+        if (m.payload.state === 'closed' && live.phase === 'playing') { live = S.invalidateTurns(live, 'disconnected'); live.complete = false; }
+      }
 
       schedule();
-    } catch (_) { diagnostics.push({ stage: '局面更新', message: '事件字段不符合预期，当前显示可能不完整。' }); schedule(); }
+    } catch (_) { live = S.invalidateTurns(live, 'invalid_event'); live.complete = false; diagnostics.push({ stage: '局面更新', message: '事件字段不符合预期，当前显示可能不完整。' }); schedule(); }
   }
   function setCursor(value) { cursor = Math.max(0, Math.min(records.length, Math.trunc(Number(value) || 0))); recalculate(); schedule(); }
   function setSelfSeat(value) {

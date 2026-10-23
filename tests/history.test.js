@@ -8,6 +8,20 @@ const event = (kind, more) => ({ source: 'live', kind, ...more });
 const finish = (state, more) => S.apply(state, event('Hule', { step: 2, scores: [33000,17000,25000,25000],
   winners: [{ seat: 0, tile: '7m', tsumo: false, han: 3, fu: 40 }], ...more }));
 
+test('history retains validated event progress but never reconstructs legacy turns from rivers', () => {
+  const s = S.apply(S.initial(), opening());
+  const saved = H.snapshot(s);
+  assert.deepEqual(saved.turnProgress.bySeat, [1,1,1,1]);
+  s.turnProgress.bySeat[0] = 9;
+  assert.equal(saved.turnProgress.bySeat[0], 1);
+  delete s.turnProgress;
+  s.players[0].discards = Array(8).fill({ tile: '1p' });
+  assert.equal(H.snapshot(s).turnProgress.reason, 'legacy');
+  s.turnProgress = { status: 'known', source: 'events', bySeat: [1,-1,2,3], secret: 'PRIVATE' };
+  assert.deepEqual(H.snapshot(s).turnProgress.bySeat, [null,null,null,null]);
+  assert.doesNotMatch(JSON.stringify(H.snapshot(s)), /PRIVATE/);
+});
+
 test('win decoding retains multi-winner settlement fields but no names or raw hand metadata', () => {
   const winner = seat => F.b(1, F.cat(F.n(4, seat), F.t(3, '0p'), F.n(11, 3), F.n(13, 40), F.t(14, 'SECRET_NAME')));
   const e = P.decodeEvent('ActionHule', F.cat(winner(0), winner(2), F.packed(2,[25000,25000,25000,25000]),

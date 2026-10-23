@@ -8,6 +8,37 @@ const make = options => C.create({ state: S, history: H, clock: () => 1700000000
 const send = (c, event) => c.receive({ type: 'event', payload: event });
 const end = c => send(c, { source: 'live', kind: 'NoTile', step: 1, scores: [25000,25000,25000,25000] });
 
+test('collection failures invalidate turns until the next observed opening', async () => {
+  for (const [message, reason] of [
+    [{ type: 'diagnostic', payload: { stage: '动作解码' } }, 'collection_error'],
+    [{ type: 'connection', payload: { socketId: 1, state: 'closed' } }, 'disconnected'],
+    [{ type: 'event', payload: { source: 'live', kind: 'DiscardTile', seat: 99, step: 1 } }, 'invalid_event']
+  ]) {
+    const c = make(); send(c, opening());
+    assert.equal(c.getView().live.turnProgress.status, 'known');
+    c.receive(message);
+    assert.equal(c.getView().live.turnProgress.reason, reason);
+    assert.deepEqual(c.getView().live.turnProgress.bySeat, [null,null,null,null]);
+    send(c, opening('live', { round: 1 }));
+    assert.equal(c.getView().live.turnProgress.status, 'known');
+    await c.flush();
+  }
+});
+
+test('replay cursor rebuilds turn progress without affecting live collection', async () => {
+  const c = make(); send(c, opening());
+  const records = [opening('replay', { recordIndex: 0 }),
+    { source: 'replay', kind: 'DiscardTile', seat: 2, tile: '1p', recordIndex: 1 },
+    { source: 'replay', kind: 'DealTile', seat: 1, tile: '2p', recordIndex: 3 }];
+  c.receive({ type: 'replay', payload: { records } });
+  c.next(); assert.deepEqual(c.getView().state.turnProgress.bySeat, [1,1,2,1]);
+  c.next(); assert.equal(c.getView().state.turnProgress.reason, 'event_gap');
+  c.previous(); assert.equal(c.getView().state.turnProgress.status, 'known');
+  c.roundStart(); assert.deepEqual(c.getView().state.turnProgress.bySeat, [1,1,1,1]);
+  c.setMode('live'); assert.deepEqual(c.getView().state.turnProgress.bySeat, [1,1,1,1]);
+  await c.flush();
+});
+
 test('replay revision tracks replacement even at identical lengths, independently of cursor', async () => {
   const c = make();
   assert.equal(c.getView().replayRevision, 0);

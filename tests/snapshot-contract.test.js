@@ -5,6 +5,19 @@ const vm = require('node:vm');
 const C = require('../extension/contracts/snapshot.js');
 const Agent = require('../extension/agent.js');
 
+test('turn progress validates every seat, strips extras and copies independently', () => {
+  const raw = { status: 'known', source: 'events', bySeat: [1,7,3], secret: 'PRIVATE' };
+  const clean = C.cleanTurnProgress(raw, 3);
+  assert.deepEqual(clean, { status: 'known', source: 'events', bySeat: [1,7,3], reason: null });
+  raw.bySeat[0] = 8; assert.equal(clean.bySeat[0], 1);
+  for (const invalid of [undefined, { ...raw, status: 'unknown' }, { ...raw, bySeat: [1,2] },
+    { ...raw, bySeat: [1,0,2] }, { ...raw, bySeat: [1,2,146] }, { ...raw, source: 'guess' }]) {
+    assert.deepEqual(C.cleanTurnProgress(invalid, 3).bySeat, [null,null,null]);
+  }
+  const snapshot = foreignSnapshot(); snapshot.turnProgress = raw;
+  assert.equal('turnProgress' in C.cleanSnapshot(snapshot), false);
+});
+
 // An unrelated collector needs only this public DTO; no observer state or replay events.
 function foreignSnapshot() {
   return { format: 'mj-analysis-v1', playerCount: 3, source: 'foreign-collector',

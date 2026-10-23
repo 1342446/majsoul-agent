@@ -3,9 +3,17 @@
   const canonical = tile => /^0[mps]$/.test(tile) ? '5' + tile[1] : tile;
   const seatUnknownWarning = '自家座位尚未识别，手牌变化未完整追踪';
   const seatHistoryWarning = '自家座位已识别，但识别前的手牌变化未完整追踪；请从下一局开局核对';
+  // Next own discard decision, starting at 1; calls and replacement draws
+  // do not add a turn until the player actually discards.
+  const unknownTurns = (reason = 'missing_start', count = 4) => ({ status: 'unknown', source: 'events', bySeat: Array(count).fill(null), reason });
+  function invalidateTurns(state, reason) {
+    const s = structuredClone(state);
+    s.turnProgress = unknownTurns(reason, s.scores.length === 3 ? 3 : 4);
+    return s;
+  }
   function initial(source = 'live', selfSeat = null) {
     return { source, selfSeat, phase: 'waiting', round: null, honba: 0, sticks: 0, remaining: null,
-      doras: [], turn: null, selfHand: [], drawnTiles: [null, null, null, null], scores: [], startScores: [], result: null, complete: false, lastStep: null, seatTrackingIncomplete: false,
+      doras: [], turn: null, turnProgress: unknownTurns(), lastRecordIndex: null, selfHand: [], drawnTiles: [null, null, null, null], scores: [], startScores: [], result: null, complete: false, lastStep: null, seatTrackingIncomplete: false,
       players: Array.from({ length: 4 }, () => ({ hand: [], discards: [], melds: [], riichi: false, norths: 0 })), warnings: [] };
   }
   function warn(s, text) { if (!s.warnings.includes(text)) s.warnings.push(text); if (s.warnings.length > 8) s.warnings.shift(); }
@@ -34,6 +42,8 @@
   function apply(state, e) {
     let s = structuredClone(state);
     if (e.source !== s.source) return s;
+    if (['DealTile', 'DiscardTile', 'ChiPengGang', 'AnGangAddGang', 'BaBei'].includes(e.kind) &&
+        (!Number.isInteger(e.seat) || e.seat < 0 || e.seat >= (s.scores.length === 3 ? 3 : 4))) throw new Error('无效动作座位');
     if (e.kind === 'MJStart') return initial(e.source);
     if (e.kind === 'NewRound') {
       s = initial(e.source, s.selfSeat);
@@ -43,13 +53,19 @@
       s.startScores = e.scores.slice();
       s.remaining = e.remaining; s.doras = e.doras.slice(); s.complete = true;
       s.turn = e.round;
+      const count = e.scores.length === 3 ? 3 : 4;
+      s.turnProgress = { status: 'known', source: 'events', bySeat: Array(count).fill(1), reason: null };
+      if (((e.source === 'live' && !Number.isInteger(e.step)) || (e.source === 'replay' && !Number.isInteger(e.recordIndex)))) s.turnProgress = unknownTurns('missing_sequence', count);
       if (e.hands) e.hands.forEach((h, i) => { s.players[i].hand = h.slice(); });
       else s.selfHand = e.hand.slice();
     } else {
       if (e.step !== undefined && s.lastStep !== null && e.step <= s.lastStep) return s;
       if (e.step !== undefined && s.lastStep !== null && e.step > s.lastStep + 1) {
+        s.turnProgress = unknownTurns('event_gap', s.scores.length === 3 ? 3 : 4);
         s.complete = false; warn(s, '动作序号有缺口，当前局面可能不完整');
       }
+      if (((e.source === 'live' && !Number.isInteger(e.step)) || (e.source === 'replay' && !Number.isInteger(e.recordIndex)))) s.turnProgress = unknownTurns('missing_sequence', s.scores.length === 3 ? 3 : 4);
+      if (e.source === 'replay' && Number.isInteger(e.recordIndex) && s.lastRecordIndex !== null && e.recordIndex !== s.lastRecordIndex + 1) s.turnProgress = unknownTurns('event_gap', s.scores.length === 3 ? 3 : 4);
       if (!s.complete && e.kind !== 'MJStart') warn(s, '当前局面可能不完整，请核对采集状态');
       if (e.source === 'live' && e.operation?.types?.length) {
         if (s.selfSeat !== null && s.selfSeat !== e.operation.seat) warn(s, '操作提示座位与所选座位不同');
@@ -66,6 +82,7 @@
       } else if (e.kind === 'DiscardTile') {
         s.turn = e.seat;
         if (hand) remove(s, hand, e.tile);
+        if (s.turnProgress?.status === 'known') s.turnProgress.bySeat[e.seat]++;
         p.discards.push({ tile: e.tile, riichi: e.riichi, tsumogiri: typeof e.tsumogiri === 'boolean' ? e.tsumogiri : null, called: false });
         if (e.riichi) p.riichi = true;
       } else if (e.kind === 'ChiPengGang') {
@@ -99,7 +116,7 @@
       } else if (e.kind === 'BaBei') {
         p.norths++; if (hand) remove(s, hand, '4z');
       } else if (['Hule', 'NoTile', 'LiuJu'].includes(e.kind)) s.phase = 'ended';
-      else if (e.kind === 'Unsupported') { s.complete = false; warn(s, '未支持事件：' + e.name); }
+      else if (e.kind === 'Unsupported') { s.turnProgress = unknownTurns('unsupported_event', s.scores.length === 3 ? 3 : 4); s.complete = false; warn(s, '未支持事件：' + e.name); }
       if (['DiscardTile', 'ChiPengGang', 'AnGangAddGang', 'BaBei'].includes(e.kind)) s.drawnTiles[e.seat] = null;
     }
     if (e.remaining !== undefined && e.remaining !== null) s.remaining = e.remaining;
@@ -119,6 +136,7 @@
         deltas: scoresKnown && s.startScores.length === s.scores.length ? s.scores.map((v, i) => v - s.startScores[i]) : [] };
     }
     if (e.step !== undefined) s.lastStep = e.step;
+    if (Number.isInteger(e.recordIndex)) s.lastRecordIndex = e.recordIndex;
     refreshSeatWarning(s);
     return s;
   }
@@ -169,7 +187,7 @@
       return e.seat === undefined ? { ...e } : { ...e, seatWind: seatWind(context, e.seat) };
     });
   }
-  const api = { initial, apply, label, doraTile, doraTiles, seatWind, withSeatWinds, handLayout, opponentRiichi, selectSelfSeat };
+  const api = { invalidateTurns, initial, apply, label, doraTile, doraTiles, seatWind, withSeatWinds, handLayout, opponentRiichi, selectSelfSeat };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else Object.defineProperty(root, '__MJ_OBSERVER_STATE_V1__', { value: api });
 })(typeof globalThis !== 'undefined' ? globalThis : this);

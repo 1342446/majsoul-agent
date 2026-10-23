@@ -184,6 +184,7 @@
       ${riichiAlert}
       ${historyHtml()}${resultHtml(s)}
       <div class="meta"><b class="round">${esc(roundText(s))}</b><span>${s.honba} 本场</span><span>${s.sticks} 立直棒</span><span>余 ${s.remaining ?? '—'} 张</span></div>
+      <p class="muted">${s.turnProgress?.status === 'known' && Number.isInteger(s.selfSeat) ? `下次自家打牌 · 第 ${s.turnProgress.bySeat[s.selfSeat]} 次 · 事件计数` : '巡目未知 · 未确认连续采集或自家座位'}</p>
       <div class="dora-row"><div><h3>宝牌指示牌</h3><div class="tiles" aria-label="宝牌指示牌">${handHtml(s.doras)}</div></div>
       <div><h3>宝牌</h3><div class="tiles" aria-label="宝牌">${handHtml(S.doraTiles(s))}</div></div></div>
       ${displayLive ? '<h3>自家手牌</h3><div class="tiles">' + playerHandHtml(s.selfHand, s.drawnTiles[s.selfSeat]) + '</div><h3>自家牌河</h3>' + selfRiver : historical ? '' : `<div class="replay-controls"><p>独立牌谱游标 ${cursor} / ${recordCount}，不会控制游戏。</p><input class="slider" id="cursor" aria-label="牌谱记录游标" type="range" min="0" max="${recordCount}" value="${cursor}"><div class="controls"><button id="start" ${!recordCount ? 'disabled' : ''}>本局开局</button><button id="prev" ${cursor === 0 ? 'disabled' : ''}>上一事件</button><button id="next" ${cursor >= recordCount ? 'disabled' : ''}>下一事件</button></div></div>`}

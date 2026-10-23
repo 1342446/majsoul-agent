@@ -75,7 +75,7 @@ Local analysis is available without an API. The card offers danger, hand-efficie
 
 1. To use a model, open `分析设置 · 调用时机与数据授权`, configure your service in `模型设置`, and grant its host permission.
 2. Enable `调用模型` and confirm consent to send public table information and your own hand. Your seat must be known; opponents' hidden tiles and account credentials are excluded.
-3. Analyze manually, or enable `自动分析`. Choose every turn or from turn N onward (initially turn 7, adjustable from 2–18). Earlier turns use local calculations. Turn numbers are your discard count plus one.
+3. Analyze manually, or enable `自动分析`. Choose every turn or from turn N onward (initially turn 7, adjustable from 2–18). Earlier turns use local calculations. The collector tracks each player’s next discard number from a continuously observed opening; calls, kans, north extractions and replacement draws alone do not increment it. Missing events, disconnections or absent sequence numbers make it unknown. From-turn-N mode then stays local until a new complete opening; every-turn mode requires no turn threshold.
 4. Automatic calls run only at your own discard decisions, combining enabled modules in one request. The default minimum interval is 8 seconds, with 20 automatic model calls per round; both are adjustable. Replays remain manual. Changes invalidate old results and cancel pending requests. Round counters reset when the panel is reloaded.
 
 With model calls disabled, local shanten, improving tiles and genbutsu/suji/kabe evidence require no model request. Integrated strategic explanations require a model. You can inspect analysis data or revoke model consent in settings.

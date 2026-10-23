@@ -3,13 +3,12 @@
   const available = typeof chrome !== 'undefined' && !!chrome.runtime?.id;
   const selection = { game: true, rivers: 'all', hand: true };
   const defaults = () => ({ danger: true, efficiency: true, strategy: true, automatic: false, useModel: false, consent: false, modelFromTurn: 1, interval: 8, limit: 20 });
-  // Turn policy uses observed own discards; it does not infer unobserved earlier turns.
   let previousDiscards = 0;
   let preferences = defaults(), preferencesLoaded = false, autoTimer = null, lastPosition = '', pendingFingerprint = '', lastAutoKey = '', roundKey = '', autoCalls = 0, lastModelAt = 0;
   function selectedTask() { return preferences.strategy || (preferences.danger && preferences.efficiency) ? 'combined' : preferences.danger ? 'danger' : 'efficiency'; }
   function hasFeatures() { return preferences.danger || preferences.efficiency || preferences.strategy; }
-  function turnNumber(data) { return (data?.rivers?.find(r => r.seat === data.selfSeat)?.discards.length || 0) + 1; }
-  function usesModel(data) { return preferences.useModel && turnNumber(data) >= preferences.modelFromTurn; }
+  function turnNumber(data) { return data?.game?.turnProgress?.status === 'known' && Number.isInteger(data.selfSeat) ? data.game.turnProgress.bySeat[data.selfSeat] ?? null : null; }
+  function usesModel(data) { return preferences.useModel && (preferences.modelFromTurn === 1 || (turnNumber(data) !== null && turnNumber(data) >= preferences.modelFromTurn)); }
   function cancelWork() {
     if (autoTimer !== null) clearTimeout(autoTimer); autoTimer = null;
     requestId++;
@@ -186,6 +185,7 @@
     const live = context?.mode === 'live' && current.phase === 'playing';
     let selectedSnapshot = null;
     try { selectedSnapshot = snapshot(); } catch (_) {}
+    const observedTurn = turnNumber(selectedSnapshot);
     const hintHand = current.selfHand || selectedSnapshot?.selfHand;
     hooks.onHints?.(live && !stale && result?.result && Array.isArray(hintHand) && hintHand.length ? {
       hand: hintHand.slice(), drawnTile: current.drawnTile ?? selectedSnapshot?.selfDrawnTile ?? null, decision: result.result.decision,
@@ -230,7 +230,7 @@
       ${preferences.useModel && provider === 'mjai' ? '<p class="muted">当前来源：自选本地 mjai 引擎。需授权对局、全部公开牌河、自家手牌及本局动作顺序；仅支持无副露四麻决策。</p>' : ''}
       <label>模型调用时机 <select id="model-from-turn"><option value="1">每巡</option><option value="7">第 N 巡起</option></select></label>
       ${preferences.modelFromTurn > 1 ? `<label>开始巡数 <input id="model-turn-number" type="number" min="2" max="18" value="${preferences.modelFromTurn}"></label>` : ''}
-      <p class="muted">巡数按自家牌河张数加一计算；达到设定巡数前使用本地分析。复盘仅手动分析。</p>
+      <p class="muted">巡数由采集层按自家打牌次数维护，杠后补牌不额外加巡。仅在巡目可信且达到设定巡数时调用模型；未知时保持本地分析。“每巡”不依赖巡目阈值。复盘仅手动分析。</p>
       <label>模型最小调用间隔（秒） <input id="model-interval" type="number" min="1" max="60" value="${preferences.interval}"></label>
       <label>每局自动模型调用上限 <input id="model-limit" type="number" min="1" max="100" value="${preferences.limit}"></label>
       <p class="muted">本局已自动调用 ${autoCalls} / ${preferences.limit} 次。手动分析不受自动调用上限限制。</p>
@@ -244,6 +244,7 @@
       ${[['danger', '危险牌提示'], ['efficiency', '手牌建议'], ['strategy', '攻守建议']].map(([key, label]) => `<label><input id="feature-${key}" type="checkbox" ${preferences[key] ? 'checked' : ''}> ${label}</label>`).join('')}
       <button id="model-preset">综合辅助</button></div>
       <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${replay ? '视角' : '自家'}${escape(selfLabel)}` : ''}</strong><span class="analysis-state">${busy ? '分析中' : !preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
+      <p class="muted" title="按自家第几次打牌计数，来源：连续采集事件">${observedTurn === null ? '巡目未知 · 等待从开局连续采集并确认自家座位' : `下次自家打牌 · 第 ${observedTurn} 次`}</p>
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
       <div class="analysis-main" role="status" aria-live="polite">
       ${stale ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}

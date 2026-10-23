@@ -1,6 +1,12 @@
 (function (root) {
   'use strict';
   const tile = t => typeof t === 'string' && /^(?:[0-9][mps]|[1-7]z|\?)$/.test(t) ? t : '?';
+  function cleanTurnProgress(raw, count) {
+    const known = raw?.status === 'known' && raw.source === 'events' && Array.isArray(raw.bySeat)
+      && raw.bySeat.length === count && raw.bySeat.every(n => Number.isInteger(n) && n >= 1 && n <= 145);
+    const reasons = ['missing_start', 'event_gap', 'missing_sequence', 'unsupported_event', 'collection_error', 'disconnected', 'invalid_event', 'legacy'];
+    return { status: known ? 'known' : 'unknown', source: 'events', bySeat: known ? raw.bySeat.slice() : Array(count).fill(null), reason: known ? null : reasons.includes(raw?.reason) ? raw.reason : 'legacy' };
+  }
   // Whitelist again at the worker boundary: never trust extra fields from a page message.
   function cleanSnapshot(raw) {
     if (!raw || raw.format !== 'mj-analysis-v1') throw new Error('局面数据格式无效。');
@@ -15,7 +21,7 @@
     if (raw.game) {
       const g = raw.game;
       if (!Array.isArray(g.players) || g.players.length !== count || !Array.isArray(g.scores) || g.scores.length !== count) throw new Error('对局玩家数据无效。');
-      data.game = { round: { wind: number(g.round?.wind), index: number(g.round?.index) }, honba: number(g.honba), sticks: number(g.sticks), remaining: number(g.remaining),
+      data.game = { turnProgress: cleanTurnProgress(g.turnProgress, count), round: { wind: number(g.round?.wind), index: number(g.round?.index) }, honba: number(g.honba), sticks: number(g.sticks), remaining: number(g.remaining),
         doras: tiles(g.doras), scores: g.scores.map(number), recentActor: number(g.recentActor), players: g.players.map((p, seat) => {
           if (!Array.isArray(p.melds) || p.melds.length > 4) throw new Error('副露数据无效。');
           return { seat, riichi: flags(p.riichi), norths: Number.isInteger(p.norths) && p.norths >= 0 && p.norths <= 4 ? p.norths : null,
@@ -46,7 +52,7 @@
     if (t.endsWith('z')) return ['东', '南', '西', '北', '白', '发', '中'][Number(t[0]) - 1];
     return (t[0] === '0' ? '赤5' : t[0]) + ({ m: '万', p: '筒', s: '索' }[t[1]]);
   }
-  const api = { tile, label, cleanSnapshot };
+  const api = { cleanTurnProgress, tile, label, cleanSnapshot };
   if (typeof module !== 'undefined' && module.exports) module.exports = api;
   else root.MJSnapshotContract = api;
 })(globalThis);

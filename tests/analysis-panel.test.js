@@ -13,6 +13,7 @@ function panel(options = {}) {
   const content = { innerHTML: '', querySelectorAll() { return details; }, querySelector(id) { if (id === '.analysis') return section; if (!elements.has(id)) elements.set(id, {}); return elements.get(id); } };
   const container = { innerHTML: '', querySelector(id) { return id === '[data-analysis-content]' ? (this.innerHTML.includes('data-analysis-content') ? content : null) : content.querySelector(id); } };
   const state = S.initial('live', 1); Object.assign(state, { round: { wind: 0, index: 0 }, scores: [25000,25000,25000,25000], phase: 'playing', selfHand: ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z','4z'] });
+  if (options.turnProgress) state.turnProgress = structuredClone(options.turnProgress);
   const context = { MJAnalysis: A, MJSnapshotContract: Contract, URL, setTimeout: options.manualTimers ? (fn, delay) => { const id = ++timerId; timers.set(id, { fn, delay }); return id; } : setTimeout,
     clearTimeout: options.manualTimers ? id => timers.delete(id) : clearTimeout,
     document: { currentScript: { src: 'https://fixture/extension/analysis-panel.js' } }, location: { href: 'https://fixture/tests/preview.html' }, window: { addEventListener() {}, removeEventListener() {} },
@@ -296,11 +297,12 @@ test('automatic decisions merge features once, do not repeat on repaint, and can
 });
 
 test('model threshold uses local analysis before the selected turn and model analysis starting at it', async () => {
-  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, modelFromTurn: 7 } }); await flush();
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, modelFromTurn: 7 }, turnProgress: { status: 'known', source: 'events', bySeat: [1,1,1,1], reason: null } }); await flush();
   p.state.turn = p.state.selfSeat; p.state.lastStep = 1; p.render(); p.fireTimer(); await flush();
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
   assert.match(p.html(), /本地分析 · 未调用模型/);
   p.state.players[p.state.selfSeat].discards = Array.from({ length: 6 }, (_, i) => ({ tile: `${i + 1}p` }));
+  p.state.turnProgress.bySeat[p.state.selfSeat] = 7;
   p.state.lastStep = 7; p.render(); p.fireTimer(); await flush();
   assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
   p.resolve(modelResult()); await flush(); p.destroy();
@@ -343,4 +345,28 @@ test('local completed shape is identified without recommending a discard', async
   await p.element('model-run').onclick({ isTrusted: true });
   assert.match(p.html(), /当前手牌已成和牌形/); assert.equal(p.hints.at(-1).decision.tile, null);
   p.destroy();
+});
+
+test('unknown collector turns never cross a turn threshold from river length, but every-turn mode still works', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, modelFromTurn: 7 } }); await flush();
+  p.state.turn = p.state.selfSeat;
+  p.state.players[p.state.selfSeat].discards = Array.from({ length: 12 }, (_, i) => ({ tile: `${i % 9 + 1}p` }));
+  p.render(); assert.match(p.html(), /巡目未知/);
+  p.fireTimer(); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  await p.element('model-run').onclick({ isTrusted: true });
+  assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
+  p.element('model-from-turn').onchange({ isTrusted: true, target: { value: '1' } });
+  p.fireTimer(); await flush(); assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1);
+  p.resolve(modelResult()); await flush(); p.destroy();
+});
+
+test('loss of turn confidence cancels pending threshold requests and discards delayed results', async () => {
+  const p = panel({ manualTimers: true, preferences: { automatic: true, useModel: true, consent: true, modelFromTurn: 7 }, turnProgress: { status: 'known', source: 'events', bySeat: [7,7,7,7], reason: null } }); await flush();
+  p.state.turn = p.state.selfSeat; p.render(); p.fireTimer(); await flush();
+  p.state.turnProgress = { status: 'unknown', source: 'events', bySeat: [null,null,null,null], reason: 'event_gap' }; p.render();
+  p.resolve(modelResult()); await flush();
+  assert.equal(p.messages.some(m => m.type === 'model:cancel'), true);
+  assert.doesNotMatch(p.html(), /测试结论/); assert.equal(p.hints.at(-1), null);
+  p.fireTimer(); await flush(); assert.equal(p.messages.filter(m => m.type === 'model:analyze').length, 1); p.destroy();
 });
