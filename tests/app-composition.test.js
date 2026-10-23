@@ -39,12 +39,12 @@ test('collector composition mounts without loading any model capability', () => 
 });
 test('agent composition keeps collection, floating analysis and hand hints on independent surfaces', () => {
   const { window } = surface(); let configured, floating, mounted, opens = [], hints = [], renders = 0;
-  let naga;
+  let naga, collectorMounts = 0;
   const body = { children: [], appendChild(node) { this.children.push(node); }, querySelector(selector) { return this.children.find(node => selector === '[data-analysis-slot]' ? 'analysisSlot' in node.dataset : 'nagaSlot' in node.dataset); } };
   const draw = () => { renders++; floating.onRender(body, draw); };
   const context = { window, URL, __MJ_OBSERVER_STATE_V1__: S, MJHistory: H, MJCollectorController: C,
     MJCollectorBrowser: B, document: { documentElement: {}, currentScript: { src: 'https://example.test/extension/apps/agent-app.js' }, getElementById: () => null, createElement: () => ({ dataset: {} }) },
-    MJCollectorPanel: { create(options) { configured = options; return { mount() {}, open(value) { opens.push(value); }, destroy() {} }; } },
+    MJCollectorPanel: { create(options) { configured = options; return { mount() { collectorMounts++; }, open(value) { opens.push(value); }, destroy() {} }; } },
     MJFloatingPanel: { create(options) { floating = options; return { mount: draw, render: draw, destroy() {} }; } },
     MJHandHints: { create() { return { update(value) { hints.push(value); }, getCalibrationState: () => ({ available: true, calibrated: false }), startCalibration() {}, destroy() {} }; } },
     MJCollectorSnapshot: { snapshot(state, selection) { return { phase: state.phase, selected: selection.game }; } },
@@ -53,7 +53,8 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   vm.runInNewContext(read('collector/controller.js'), context);
   vm.runInNewContext(read('collector/browser-adapter.js'), context);
   vm.runInNewContext(read('apps/agent-app.js'), context);
-  assert.equal(configured.extensionSlot, undefined); assert.equal(configured.collapsed, true);
+  assert.equal(configured.extensionSlot, undefined); assert.equal(configured.collapsed, false);
+  assert.equal(configured.dismissible, true); assert.equal(collectorMounts, 0);
   assert.equal(floating.id, 'mj-agent-host'); assert.equal(floating.title, 'Majsoul Agent');
   const view = mounted[1];
   assert.equal('players' in view, false); assert.equal('state' in view, false);

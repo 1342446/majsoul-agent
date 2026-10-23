@@ -2,7 +2,7 @@
   'use strict';
   const scriptUrl = typeof document !== 'undefined' ? document.currentScript?.src : '';
   function start() {
-    if (document.getElementById('mj-observer-host')) return null;
+    if (document.getElementById('mj-agent-host') || document.getElementById('mj-observer-host')) return null;
     const ports = root.MJCollectorBrowser.create({ window: root.window, scriptUrl: scriptUrl });
     const controller = root.MJCollectorController.create(ports);
     const hints = root.MJHandHints.create({ onCalibrationChange(state) {
@@ -10,7 +10,7 @@
       if (!state.editing) document.getElementById('mj-agent-host')?.shadowRoot?.querySelector('#analysis-calibrate')?.focus({ preventScroll: true });
     } });
     const hintHooks = { onHints: value => hints.update(value) };
-    const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: true });
+    const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: false, dismissible: true });
     const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul Agent', positionKey: 'mj-agent-panel-position-v1',
       onRender(container, render) {
         let analysisSlot = container.querySelector('[data-analysis-slot]');
@@ -57,7 +57,7 @@
         }, render);
       }
     });
-    panel.mount(); analysis.mount();
+    analysis.mount();
     // The analysis renderer invalidates stale hints synchronously with each state change.
     const unsubscribe = controller.subscribe(() => analysis.render());
     const disconnect = ports.connect(controller);
