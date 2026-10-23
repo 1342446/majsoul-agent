@@ -53,7 +53,7 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   vm.runInNewContext(read('collector/browser-adapter.js'), context);
   vm.runInNewContext(read('apps/agent-app.js'), context);
   assert.equal(configured.extensionSlot, undefined); assert.equal(configured.collapsed, true);
-  assert.equal(floating.id, 'mj-agent-host'); assert.equal(floating.title, 'Majsoul AI Analysis & Review Agent');
+  assert.equal(floating.id, 'mj-agent-host'); assert.equal(floating.title, 'Majsoul Agent');
   const view = mounted[1];
   assert.equal('players' in view, false); assert.equal('state' in view, false);
   assert.deepEqual(view.snapshot({ game: true }), { phase: 'waiting', selected: true });
