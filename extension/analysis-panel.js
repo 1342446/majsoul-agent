@@ -70,7 +70,7 @@
     autoTimer = setTimeout(() => { autoTimer = null; if (key !== fingerprint()) return; lastAutoKey = key; runAnalysis(true); }, delay);
   }
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
-  let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, connected = false;
+  let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, statusRequestId = 0, connected = false;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   const tileBase = available ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
@@ -121,25 +121,30 @@
   function fingerprint() { try { return JSON.stringify({ provider, preferences, task, context, round: current.round, phase: current.phase, hand: current.selfHand, drawnTile: current.drawnTile, snapshot: snapshot() }); } catch (_) { return ''; } }
   async function refresh() {
     if (!available) return;
-    const generation = lifecycle;
+    const generation = lifecycle, id = ++statusRequestId;
     try { const status = await send({ type: 'model:status' });
-      if (generation !== lifecycle) return;
+      if (generation !== lifecycle || id !== statusRequestId) return;
       const nextProvider = status?.provider === 'mjai' ? 'mjai' : 'chat';
       if (enabled !== !!status?.enabled || provider !== nextProvider) { result = null; preparationKey = ''; preparation = null; }
       if (!preferencesLoaded) { preferences = { ...defaults(), ...status?.preferences }; preferencesLoaded = true; task = selectedTask(); }
       provider = nextProvider;
       enabled = !!status?.enabled; }
-    catch (_) { if (generation !== lifecycle) return; enabled = false; preferencesLoaded = true; }
+    catch (_) { if (generation !== lifecycle || id !== statusRequestId) return; enabled = false; preferencesLoaded = true; }
     repaint?.();
   }
-  function configChanged(changes, area) {
-    if (area === 'local' && changes.modelConfig) { cancelWork(); result = null; hooks.onHints?.(null); refresh(); }
+  function configChanged(message, sender) {
+    if (message?.type !== 'model:config-changed' || sender?.id !== chrome.runtime.id || sender.tab) return;
+    cancelWork(); result = null; failure = ''; lastAutoKey = ''; preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
+    hooks.onHints?.(null);
+    // Block requests using the previous configuration while status is refreshed.
+    enabled = false;
+    refresh(); repaint?.();
   }
   function connect() {
     if (!available) { preferencesLoaded = true; return; }
     if (connected) return;
     connected = true;
-    chrome.storage.onChanged.addListener(configChanged);
+    chrome.runtime.onMessage.addListener(configChanged);
     window.addEventListener('focus', refresh);
     refresh();
   }
@@ -148,7 +153,7 @@
     hooks.onHints?.(null); hooks = {}; detailsState = {}; focusTile = null;
     lifecycle++; requestId++;
     if (available && connected) {
-      chrome.storage.onChanged.removeListener(configChanged);
+      chrome.runtime.onMessage.removeListener(configChanged);
       window.removeEventListener('focus', refresh);
       if (busy) send({ type: 'model:cancel' }).catch(() => {});
     }

@@ -52,11 +52,14 @@ test('chat base URLs normalize once while preserving prefixes and ports', () => 
 });
 function worker(overrides = {}) {
   let listener, changed, requests = [], accessLevel, aborted = false, timeout, analysisPreferences;
+  const notifications = [], tabQueries = [];
   const config = { enabled: true, model: 'mock-model', endpoint: 'https://provider.example/v1/chat/completions', apiKey: 'test-key', ...overrides.config };
   const context = { MJAnalysis: A, MJModelEndpoint: E, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
     setTimeout: overrides.manualTimer ? fn => { timeout = fn; return 1; } : setTimeout,
     clearTimeout: overrides.manualTimer ? () => {} : clearTimeout,
     chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config, analysisPreferences }), set: async value => { analysisPreferences = value.analysisPreferences; } }, onChanged: { addListener: fn => { changed = fn; } } },
+      tabs: { query: async query => { tabQueries.push(query); return [{ id: 7 }, { id: 8 }]; },
+        sendMessage: async (...args) => { notifications.push(args); if (args[0] === 8) throw new Error('Tab closed'); } },
       permissions: { contains: async () => overrides.permission !== false },
       runtime: { id: 'extension-id', getURL: path => 'chrome-extension://extension-id/' + path, openOptionsPage() {}, onMessage: { addListener: fn => { listener = fn; } } } },
     fetch: async (url, options) => {
@@ -69,8 +72,26 @@ function worker(overrides = {}) {
   const sender = { id: 'extension-id', tab: { id: 7 }, frameId: 0, url: 'https://game.maj-soul.com/1/' };
   const call = (message, from = sender) => new Promise(resolve => { if (listener(message, from, resolve) !== true) resolve(undefined); });
   const analyze = (task = 'both', selection = { game: true, hand: true, rivers: 'all' }) => call({ type: 'model:analyze', task, snapshot: C.snapshot(state('live'), selection) });
-  return { call, analyze, requests, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
+  return { call, analyze, requests, notifications, tabQueries, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
 }
+
+test('trusted model configuration changes notify game tabs without disclosing configuration', async () => {
+  const w = worker();
+  await w.changed({ analysisPreferences: {} }, 'local');
+  await w.changed({ modelConfig: {} }, 'sync');
+  assert.equal(w.notifications.length, 0);
+  for (const newValue of [{ enabled: true, apiKey: 'SECRET' }, { enabled: false }, undefined]) {
+    await w.changed({ modelConfig: { newValue } }, 'local');
+  }
+  assert.equal(w.tabQueries.length, 3);
+  assert.equal(w.tabQueries[0].url, 'https://game.maj-soul.com/*');
+  assert.equal(w.notifications.length, 6);
+  for (const [tabId, message, target] of w.notifications) {
+    assert.ok([7, 8].includes(tabId));
+    assert.equal(JSON.stringify(message), '{"type":"model:config-changed"}');
+    assert.equal(target.frameId, 0);
+  }
+});
 test('worker authenticates sender, keeps credentials out of status and uses non-streaming bounded request', async () => {
   const w = worker(); assert.equal(w.accessLevel.accessLevel, 'TRUSTED_CONTEXTS');
   assert.equal(await w.call({ type: 'model:analyze' }, { ...w.sender, id: 'other' }), undefined);

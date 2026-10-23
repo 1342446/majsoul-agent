@@ -18,10 +18,10 @@ function panel(options = {}) {
     clearTimeout: options.manualTimers ? id => timers.delete(id) : clearTimeout,
     document: { currentScript: { src: 'https://fixture/extension/analysis-panel.js' } }, location: { href: 'https://fixture/tests/preview.html' }, window: { addEventListener() {}, removeEventListener() {} },
     chrome: { runtime: { id: 'fixture', getURL: p => 'chrome-extension://fixture/' + p, sendMessage: async m => {
-      messages.push(m); if (m.type === 'model:status') return { enabled: true, provider: options.provider || 'chat', preferences: options.preferences || { useModel: true, consent: true } };
+      messages.push(m); if (m.type === 'model:status') return options.status ? options.status() : { enabled: true, provider: options.provider || 'chat', preferences: options.preferences || { useModel: true, consent: true } };
       if (m.type === 'model:prepare') return { ok: true, data: m.provider === 'mjai' ? m.engineRequest : A.prepare(m.snapshot, m.task).data };
       if (m.type === 'model:analyze') return new Promise(resolve => { resolveAnalysis = resolve; }); return { ok: true };
-    } }, storage: { onChanged: { addListener: fn => { configChanged = fn; }, removeListener() {} } } } };
+    }, onMessage: { addListener: fn => { configChanged = fn; }, removeListener: fn => { if (configChanged === fn) configChanged = null; } } } } };
   if (options.offline) delete context.chrome;
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/analysis-panel.js'), 'utf8'), context);
   const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], recordCount: options.recordCount || 0,
@@ -29,7 +29,7 @@ function panel(options = {}) {
     onCursor: cursor => { position.cursor = cursor; render(); }, onSelfSeat: seat => { state.selfSeat = seat; render(); }, onRoundStart: () => roundStartCalls++,
     onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
   render();
-  return { timers, fireTimer: () => { const [id, timer] = timers.entries().next().value; timers.delete(id); return timer.fn(); }, render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: () => configChanged({ modelConfig: {} }, 'local'), resolve: value => resolveAnalysis(value) };
+  return { timers, fireTimer: () => { const [id, timer] = timers.entries().next().value; timers.delete(id); return timer.fn(); }, render, state, messages, hints, position, details, section, calls: () => [collectorCalls, historyCalls, calibrateCalls], roundStartCalls: () => roundStartCalls, destroy: () => context.MJAnalysisPanel.destroy(), element: id => elements.get('#' + id), html: () => container.innerHTML.replace('<div data-analysis-content></div>', '<div data-analysis-content>' + content.innerHTML + '</div>'), configChanged: (sender = { id: 'fixture' }) => configChanged?.({ type: 'model:config-changed' }, sender), resolve: value => resolveAnalysis(value) };
 }
 test('panel previews task-specific data and escapes model text while rendering tile cards and local table', async () => {
   const p = panel(); await flush();
@@ -73,6 +73,39 @@ test('destroy cancels pending work and remount reloads configuration with defaul
   assert.doesNotMatch(p.html(), /destroyed-result/);
   assert.match(p.html(), /调用模型/);
   assert.doesNotMatch(p.html(), /正在分析/);
+});
+
+test('background notifications refresh model availability and provider without storage events or focus', async () => {
+  let status = { enabled: false, preferences: { useModel: true, consent: true } };
+  const p = panel({ status: () => status }); await flush();
+  assert.match(p.html(), /请在模型设置中接入并开启模型/);
+  status = { ...status, enabled: true, provider: 'mjai' };
+  p.configChanged(); await flush();
+  assert.doesNotMatch(p.html(), /请在模型设置中接入并开启模型/);
+  assert.match(p.html(), /当前来源：自选本地 mjai 引擎/);
+  status = { ...status, enabled: false };
+  p.configChanged(); await flush();
+  assert.match(p.html(), /请在模型设置中接入并开启模型/);
+  const count = p.messages.length;
+  p.configChanged({ id: 'other' }); p.configChanged({ id: 'fixture', tab: { id: 7 } }); await flush();
+  assert.equal(p.messages.length, count);
+  p.destroy(); p.configChanged(); await flush();
+  assert.equal(p.messages.length, count);
+});
+
+test('late status responses cannot overwrite configuration refreshed by a background notification', async () => {
+  for (const failOld of [false, true]) {
+    const pending = [];
+    const p = panel({ status: () => new Promise((resolve, reject) => pending.push({ resolve, reject })) });
+    p.configChanged();
+    pending[1].resolve({ enabled: true, preferences: { useModel: true, consent: true } }); await flush();
+    if (failOld) pending[0].reject(new Error('Old request failed'));
+    else pending[0].resolve({ enabled: false });
+    await flush();
+    assert.doesNotMatch(p.html(), /请在模型设置中接入并开启模型/);
+    assert.match(p.html(), /第 1 巡起调用模型/);
+    p.destroy();
+  }
 });
 
 

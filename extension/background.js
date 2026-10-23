@@ -6,8 +6,19 @@ importScripts('history.js', 'history-storage.js');
 const pending = new Map();
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 chrome.storage.onChanged.addListener((changes, area) => {
-  if (area === 'local' && changes.modelConfig) for (const controller of pending.values()) controller.abort();
+  if (area !== 'local' || !changes.modelConfig) return;
+  for (const controller of pending.values()) controller.abort();
+  // Content scripts cannot observe changes to TRUSTED_CONTEXTS storage.
+  // Send only an invalidation signal; credentials stay in the worker.
+  return notifyModelConfigChanged();
 });
+async function notifyModelConfigChanged() {
+  try {
+    const tabs = await chrome.tabs.query({ url: 'https://game.maj-soul.com/*' });
+    await Promise.allSettled(tabs.filter(tab => Number.isInteger(tab.id)).map(tab =>
+      chrome.tabs.sendMessage(tab.id, { type: 'model:config-changed' }, { frameId: 0 })));
+  } catch (_) { /* Tabs may close or unload while the configuration is saved. */ }
+}
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   const game = sender.tab && sender.frameId === 0 && sender.url?.startsWith('https://game.maj-soul.com/');
