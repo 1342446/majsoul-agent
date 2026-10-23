@@ -44,6 +44,30 @@ test('global preview and request use combined data regardless of automatic featu
   const saved = globalSection(p);
   p.state.lastStep++; p.render(); assert.equal(globalSection(p), saved);
 });
+test('failed model content is hidden behind an inline view button and escaped when expanded', async () => {
+  const p = panel(); await flush();
+  assert.doesNotMatch(p.html(), /model-failure-global|模型失败原始结果/);
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  p.resolve({ ok: false, error: '模型分析结果不符合结构化要求：结果缺少必需字段。',
+    rawModelResult: { content: '<img onerror=bad>\n  {}', model: 'fixture', capturedAt: '2026-10-24T00:00:00Z', truncated: false },
+    validation: { code: 'missing_fields', path: 'result' } });
+  await pending;
+  assert.match(p.html(), /缺少必需字段。 <button id="model-failure-global"[^>]*>查看<\/button>/);
+  assert.doesNotMatch(p.html(), /模型失败原始结果|查看最近一次失败原文/);
+  p.element('model-failure-global').onclick();
+  assert.match(p.html(), /aria-expanded="true"/);
+  assert.match(p.html(), /&lt;img onerror=bad&gt;\n  {}/);
+  assert.doesNotMatch(p.html(), /<img onerror=bad>/);
+  p.state.lastStep++; p.render(); assert.match(p.html(), /模型失败原始结果/);
+  p.element('model-failure-global').onclick(); assert.doesNotMatch(p.html(), /模型失败原始结果/);
+  const retry = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  assert.doesNotMatch(p.html(), /model-failure-global/);
+  p.resolve(modelResult()); await retry;
+  assert.doesNotMatch(p.html(), /model-failure-global|模型失败原始结果/);
+  p.destroy(); p.render(); await flush();
+  assert.doesNotMatch(p.html(), /model-failure-global/);
+});
+
 test('panel cancellation discards delayed model results and synthetic clicks send no request', async () => {
   const p = panel(); await flush(); await p.element('model-run').onclick({ isTrusted: false });
   assert.equal(p.messages.some(m => m.type === 'model:analyze'), false);
@@ -121,6 +145,17 @@ async function automaticResult(p, response = modelResult()) {
   p.state.turn = p.state.selfSeat; p.render(); p.fireTimer(); await flush();
   p.resolve(response); await flush();
 }
+
+test('automatic failures expose their own raw result beside the automatic error', async () => {
+  const p = automaticPanel(); await flush();
+  await automaticResult(p, { ok: false, error: '结构化错误', rawModelResult: { content: '{"task":"combined"}', model: 'fixture' } });
+  assert.match(p.html(), /结构化错误 <button id="model-failure-automatic"/);
+  assert.doesNotMatch(p.html(), /model-failure-global|模型失败原始结果/);
+  p.element('model-failure-automatic').onclick();
+  assert.match(p.html(), /模型失败原始结果/);
+  p.state.lastStep++; p.state.turn = 2; p.render();
+  p.destroy();
+});
 
 test('hints only describe the matching live hand and never alter sending authorization', async () => {
   const p = automaticPanel(); await flush();
@@ -227,6 +262,10 @@ test('waiting snapshot errors stay in settings and calibration only runs with a 
   p.state.round = null; p.render();
   const main = p.html().split('<div class="analysis-main"')[1].split('<div class="analysis-actions"')[0];
   assert.match(main, /等待开局数据/);
+  assert.doesNotMatch(p.html(), /历史或结算局面/);
+  p.state.phase = 'ended'; p.render(); assert.match(p.html(), /历史或结算局面/);
+  p.state.phase = 'playing'; p.position.mode = 'history'; p.render(); assert.match(p.html(), /历史或结算局面/);
+  p.state.phase = 'waiting'; p.position.mode = 'live'; p.render(); assert.doesNotMatch(p.html(), /历史或结算局面/);
   assert.doesNotMatch(main, /请先等待开局数据/);
   assert.match(p.html(), /id="analysis-calibrate" disabled>重新校准手牌提示/);
   assert.match(p.html(), /进入游戏牌桌后可校准手牌提示/);
@@ -256,6 +295,8 @@ test('suggested tiles distinguish red fives while danger applies to their shared
 test('compact summary keeps hand and metadata folded while candidates switch explanation without requests', async () => {
   const p = automaticPanel(); await flush();
   const response = modelResult(); response.result.decision.action = 'defend';
+  response.result.danger[0].opponents[0].reasons = ['警戒。', '仍有风险。；'];
+  response.result.efficiency.unshift({ tile: '1m', reasons: ['保留搭子。', '进张较多。'] });
   await automaticResult(p, response);
   const main = () => p.html().split('<div class="analysis-main"')[1].split('<details data-section="reasons"')[0];
   const focus = () => p.html().split('<div class="analysis-focus"')[1].split('</div>')[0];
@@ -264,6 +305,8 @@ test('compact summary keeps hand and metadata folded while candidates switch exp
   assert.doesNotMatch(p.html(), /data-section="local"/);
   assert.match(p.html(), /id="model-run"[^>]*>分析当前局面<\/button>/);
   assert.match(focus(), /首选建议/); assert.match(focus(), /较高/); assert.match(focus(), /警戒/);
+  assert.match(focus(), /警戒。 仍有风险。 保留搭子。 进张较多。/);
+  assert.doesNotMatch(p.html(), /。；/);
   assert.match(main(), /防守 · 建议打<\/span>[^]*1m\.svg/); assert.doesNotMatch(main(), /回避/);
   const explanation = p.element('model-focus-text');
   explanation.scrollHeight = 180; explanation.clientHeight = 96; p.render();

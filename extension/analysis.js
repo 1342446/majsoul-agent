@@ -72,7 +72,8 @@
     };
     const object = (v, keys, path) => {
       if (!v || typeof v !== 'object' || Array.isArray(v)) fail('结果条目应为对象。', 'object_type', path);
-      if (keys.some(k => !Object.hasOwn(v, k))) fail('结果缺少必需字段。', 'missing_fields', path);
+      const missing = keys.filter(k => !Object.hasOwn(v, k));
+      if (missing.length) fail('结果缺少必需字段（' + missing.join('、') + '）。', 'missing_fields', path);
       if (Object.keys(v).length !== keys.length) fail('结果包含未支持的字段。', 'extra_fields', path);
     };
     const strings = (v, path) => { if (!Array.isArray(v) || v.length > 32 || v.some(x => typeof x !== 'string' || !x.trim() || x.length > 2000)) fail('分析理由应为非空文字列表，单条不超过 2000 字。', 'reason_format', path); };

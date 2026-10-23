@@ -47,6 +47,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return true;
   }
   if (message?.type !== 'model:analyze' || !game) return;
+  let rawModelResult = null;
   (async () => {
     const key = sender.tab.id;
     if (pending.has(key)) throw new Error('已有分析正在进行。');
@@ -108,6 +109,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
           let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('接口没有返回有效 JSON，请检查是否为 OpenAI 兼容接口。'); }
           const choice = data?.choices?.[0], content = choice?.message?.content;
+          if (typeof content === 'string') rawModelResult = { content: content.slice(0, 32000), truncated: content.length > 32000,
+            model: c.model, capturedAt: new Date().toISOString(), finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason.slice(0, 100) : null };
           if (choice?.finish_reason === 'length') throw new Error('模型输出达到长度上限，未完成分析。');
           if (choice?.finish_reason === 'content_filter') throw new Error('模型输出被服务过滤，未完成分析。');
           if (['insufficient_system_resource', 'aborted'].includes(choice?.finish_reason)) throw new Error('模型服务中断了生成，请稍后重试。');
@@ -121,7 +124,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         } });
       return { ok: true, ...analysis, model: c.model };
     } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
-  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message), ...(error.validation ? { validation: error.validation } : {}) }));
+  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message), ...(error.validation ? { validation: error.validation } : {}), ...(rawModelResult && error.name !== 'AbortError' ? { rawModelResult } : {}) }));
   return true;
 });
 

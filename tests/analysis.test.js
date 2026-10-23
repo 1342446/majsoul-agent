@@ -75,6 +75,37 @@ function worker(overrides = {}) {
   return { call, analyze, requests, notifications, tabQueries, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
 }
 
+test('failed structured responses preserve original final content and identify missing fields', async () => {
+  const content = '  ```json\n{"task":"combined","note":"<img onerror=bad>"}\n```  ';
+  const w = worker({ body: { choices: [{ finish_reason: 'stop', message: { content, reasoning_content: 'PRIVATE_REASONING' } }] } });
+  const response = await w.analyze();
+  assert.equal(response.ok, false);
+  assert.equal(response.rawModelResult.content, content);
+  assert.equal(response.rawModelResult.model, 'mock-model');
+  assert.equal(response.rawModelResult.finishReason, 'stop');
+  assert.equal(response.rawModelResult.truncated, false);
+  assert.ok(Number.isFinite(Date.parse(response.rawModelResult.capturedAt)));
+  assert.equal(response.validation.code, 'missing_fields');
+  assert.equal(response.validation.path, 'result');
+  assert.match(response.error, /danger、efficiency、decision、limitations/);
+  assert.doesNotMatch(JSON.stringify(response), /test-key|provider\.example|PRIVATE_REASONING|Authorization/);
+  assert.equal(w.requests.length, 1);
+});
+
+test('raw diagnostics are bounded and absent on success, network failure and cancellation', async () => {
+  const content = 'x'.repeat(32001);
+  const response = await worker({ body: { choices: [{ message: { content } }] } }).analyze();
+  assert.equal(response.rawModelResult.content, content.slice(0, 32000));
+  assert.equal(response.rawModelResult.truncated, true);
+  for (const w of [worker(), worker({ networkError: true })]) {
+    assert.equal('rawModelResult' in await w.analyze(), false);
+  }
+  const w = worker({ wait: true }); const pending = w.analyze();
+  await new Promise(resolve => setImmediate(resolve));
+  await w.call({ type: 'model:cancel' });
+  assert.equal('rawModelResult' in await pending, false);
+});
+
 test('official DeepSeek Flash disables default thinking without changing other providers', async () => {
   for (const [endpoint, model, disabled] of [
     ['https://api.deepseek.com/chat/completions', 'deepseek-flash', true],

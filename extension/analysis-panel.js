@@ -46,11 +46,18 @@
       const capturedPosition = { round: data.game?.round, source: context?.mode, cursor: context?.cursor, selfSeat: data.selfSeat, hand: data.selfHand?.slice() || [] };
       pendingFingerprint = automatic ? captured : ''; pendingAutomatic = automatic; busy = true;
       if (automatic) failure = ''; else globalFailure = '';
+      modelFailureExpanded[automatic ? 'automatic' : 'global'] = false;
+      delete modelFailures[automatic ? 'automatic' : 'global'];
       if (automatic && external) { autoCalls++; lastModelAt = Date.now(); }
       repaint?.();
       const response = external ? await send({ type: 'model:analyze', provider, task: requestedTask, snapshot: data, ...extra }) : localResponse(data, requestedTask);
       if (id !== requestId || (automatic && captured !== fingerprint())) return;
-      if (!response?.ok) throw new Error(response?.error || '分析失败，请重试。');
+      if (!response?.ok) {
+        if (typeof response?.rawModelResult?.content === 'string') {
+          modelFailures[automatic ? 'automatic' : 'global'] = { ...response.rawModelResult, error: response.error, validation: response.validation };
+        }
+        throw new Error(response?.error || '分析失败，请重试。');
+      }
       // A combined backend request may supply extra sections; display only enabled help.
       if (automatic) {
         if (!preferences.danger) response.result.danger = [];
@@ -77,15 +84,25 @@
   }
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
   let pendingAutomatic = false, globalResult = null, globalFailure = '';
+  let modelFailures = {}, modelFailureExpanded = {};
   let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, statusRequestId = 0, connected = false;
   let focusExpanded = false, focusResizeObserver = null;
   const send = message => chrome.runtime.sendMessage(message);
   const escape = value => String(value ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+  function failureHtml(message, scope) {
+    if (!message) return '';
+    const diagnostic = modelFailures[scope];
+    const inspectable = diagnostic?.error === message;
+    const expanded = inspectable && modelFailureExpanded[scope];
+    return `<p class="warn" role="status">${escape(message)}${inspectable ? ` <button id="model-failure-${scope}" aria-expanded="${!!expanded}" aria-controls="model-raw-${scope}">${expanded ? '收起' : '查看'}</button>` : ''}</p>${expanded ? `<div id="model-raw-${scope}"><p class="analysis-meta muted">${escape(diagnostic.model)} · ${escape(diagnostic.capturedAt)}${diagnostic.validation ? ` · ${escape(diagnostic.validation.path)} · ${escape(diagnostic.validation.code)}` : ''}${diagnostic.finishReason ? ` · ${escape(diagnostic.finishReason)}` : ''}</p>${diagnostic.truncated ? '<p class="muted">仅保留原文前 32000 字符。</p>' : ''}<pre tabindex="0" aria-label="模型失败原始结果">${escape(diagnostic.content)}</pre></div>` : ''}`;
+  }
   const tileBase = available ? chrome.runtime.getURL('tiles/') : new URL('tiles/', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
   const styleUrl = available ? chrome.runtime.getURL('analysis-panel.css') : new URL('analysis-panel.css', document.currentScript?.src || new URL('../extension/analysis-panel.js', location.href)).href;
   const rendered = new WeakMap();
   const face = t => /^(?:[0-9][mps]|[1-7]z)$/.test(t) ? `<img class="analysis-tile" src="${escape(tileBase + t + '.svg')}" alt="${escape(MJSnapshotContract.label(t))}" title="${escape(MJSnapshotContract.label(t))}">` : escape(t);
-  const reasons = values => (values || []).map(escape).join('；');
+  const joinReasons = values => (values || []).map(value => String(value ?? '').trim().replace(/[；;]+$/u, '')).filter(Boolean)
+    .reduce((text, value) => text ? text + (/[。！？!?.…][”’」』）)]?$/u.test(text) ? ' ' : '；') + value : value, '');
+  const reasons = values => escape(joinReasons(values));
   const actionNames = { attack: '进攻', defend: '防守', fold: '弃和', unknown: '暂无法判断' };
   const riskNames = { safe: '现物', low: '较低', medium: '中等', high: '较高', unknown: '未知' };
   const decisionLabel = response => response?.actualProvider === 'local' ? '本地分析' : ({ reach: '立直意向', none: '跳过响应' })[response?.engine?.action?.type] || actionNames[response?.result?.decision?.action] || '暂无法判断';
@@ -169,6 +186,7 @@
     }
     connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false; provider = 'chat';
     globalResult = null; globalFailure = ''; pendingAutomatic = false;
+    modelFailures = {}; modelFailureExpanded = {};
     current = null; context = null; repaint = null;
     preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
     selection.game = true; selection.rivers = 'all'; selection.hand = true; task = 'combined';
@@ -225,9 +243,9 @@
     const handSection = hand.length ? `<div class="analysis-hand" aria-label="当前自家手牌"><small class="muted">当前自家手牌</small>${handHtml}</div>` : '';
     const focusTiles = [...new Set([r?.decision.tile, ...candidateTiles])].filter(Boolean);
     if (!focusTiles.includes(focusTile)) { focusTile = r?.decision.tile || focusTiles[0] || null; focusExpanded = false; }
-    const focusedDanger = (r?.danger || []).filter(d => kind(d.tile) === kind(focusTile)).flatMap(d => d.opponents.map(o => `${result.seatLabels?.[o.seat] || ('座位 ' + o.seat)} · ${riskNames[o.level] || '未知'}：${(o.reasons || []).join('；')}`));
+    const focusedDanger = (r?.danger || []).filter(d => kind(d.tile) === kind(focusTile)).flatMap(d => d.opponents.map(o => `${result.seatLabels?.[o.seat] || ('座位 ' + o.seat)} · ${riskNames[o.level] || '未知'}：${joinReasons(o.reasons)}`));
     const focusedEfficiency = (r?.efficiency || []).filter(e => e.tile === focusTile).flatMap(e => e.reasons || []);
-    const focusSummary = focusTile ? `<div class="analysis-focus${focusExpanded ? ' is-expanded' : ''}" aria-label="候选牌解释"><small>${escape(MJSnapshotContract.label(focusTile))} · ${focusTile === r?.decision.tile ? '首选建议' : '候选解释'}</small><p id="model-focus-text">${escape([...focusedDanger, ...focusedEfficiency].join('；') || '暂无该牌的额外解释，请展开详细分析查看完整依据。')}</p><button id="model-focus-toggle" aria-expanded="${focusExpanded}" aria-controls="model-focus-text" ${focusExpanded ? '' : 'hidden'}>${focusExpanded ? '收起' : '展开'}</button></div>` : '';
+    const focusSummary = focusTile ? `<div class="analysis-focus${focusExpanded ? ' is-expanded' : ''}" aria-label="候选牌解释"><small>${escape(MJSnapshotContract.label(focusTile))} · ${focusTile === r?.decision.tile ? '首选建议' : '候选解释'}</small><p id="model-focus-text">${escape(joinReasons([...focusedDanger, ...focusedEfficiency]) || '暂无该牌的额外解释，请展开详细分析查看完整依据。')}</p><button id="model-focus-toggle" aria-expanded="${focusExpanded}" aria-controls="model-focus-text" ${focusExpanded ? '' : 'hidden'}>${focusExpanded ? '收起' : '展开'}</button></div>` : '';
     const candidateHtml = focusTiles.length ? `<div class="analysis-candidates"><span class="muted">比较</span>${focusTiles.map((tile, index) => `<button id="model-candidate-${index}" data-candidate-tile="${escape(tile)}" aria-pressed="${tile === focusTile}" aria-label="查看${escape(MJSnapshotContract.label(tile))}的风险和效率理由">${face(tile)}</button>`).join('')}</div>${focusSummary}` : '';
     const roundLabel = current.round ? `${['东', '南', '西', '北'][current.round.wind] || '东'}${Number(current.round.index) + 1}局` : '等待开局';
     const selfLabel = Number.isInteger(current.selfSeat) ? current.seatLabels[current.selfSeat] : '';
@@ -261,7 +279,7 @@
       ${globalResult ? `<p class="analysis-meta muted">${escape(savedPosition)} · ${escape(globalResult.model)}</p><div class="analysis-global-result">
         <div class="analysis-decision"><span>${decisionHeading(globalResult)}</span>${globalResult.result.decision.tile ? face(globalResult.result.decision.tile) : ''}<p>${escape(globalResult.result.decision.reasons?.[0] || '请展开分析依据。')}</p></div>
         ${disclosure('global-details', '分析依据', `${resultHtml(globalResult)}${globalResult.position.hand.length ? `<div class="analysis-global-hand" aria-label="分析时手牌">${globalResult.position.hand.map(face).join('')}</div>` : ''}${localHtml(globalResult.localAnalysis, globalResult.positionPhase)}`)}</div>` : '<p class="muted">尚未分析</p>'}
-      ${globalFailure ? `<p class="warn" role="status">${escape(globalFailure)}</p>` : ''}
+      ${failureHtml(globalFailure, 'global')}
       </section>`;
     const markup = `<section class="analysis" aria-label="模型分析">
       ${modeControls}${replayControls}
@@ -273,13 +291,12 @@
       <header class="analysis-heading"><strong>${escape(roundLabel)}${selfLabel ? ` · ${escape(selfLabel)}${replay ? '视角' : ''}` : ''}</strong><span class="analysis-state">${!preferences.useModel ? '仅本地分析' : preferences.automatic ? '自动分析' : '手动分析'}</span></header>
       ${busy ? `<p class="${live ? 'warn' : 'muted'}" role="status" aria-live="polite">${live ? '正在分析，请先不要出牌。' : '正在分析中…'}</p>` : ''}
       ${(current.riichiLabels || []).length ? `<p class="analysis-riichi">${replay ? '已立直' : '立直警戒'} · ${(current.riichiLabels || []).map(escape).join(' · ')}</p>` : ''}
-      <div class="analysis-main" role="status" aria-live="polite"><h3>出牌提示</h3>
+      <div class="analysis-main" role="status" aria-live="polite">
       ${stale && !busy ? '<p class="warn analysis-stale">局面或分析功能已变化，以下为旧结果，请重新分析。</p>' : ''}
       ${r ? `<div class="analysis-decision"><span>${decisionHeading(result)}</span>${r.decision.tile ? face(r.decision.tile) : ''}<p>${escape(r.decision.reasons?.[0] || '请结合当前局面判断。')}</p></div>${candidateHtml}` : busy ? '' : `<div class="analysis-empty"><strong>${!current.round ? '等待开局数据' : preferences.automatic ? '等待轮到你出牌' : '自动提示未开启'}</strong>${!hasFeatures() ? '<p class="muted">请至少开启一项辅助功能。</p>' : preferences.useModel && !enabled ? '<p class="muted">请在模型设置中接入并开启模型。</p>' : ''}</div>`}
-      ${replay ? '' : current.phase !== 'playing' || context?.mode !== 'live' ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
-      ${failure ? `<p class="warn">${escape(failure)}</p>` : ''}
+      ${!replay && (current.phase === 'ended' || context?.mode === 'history') ? '<p class="muted">历史或结算局面 · 仅作复盘</p>' : ''}
+      ${failureHtml(failure, 'automatic')}
       </div>
-      ${busy && pendingAutomatic ? '<div class="analysis-actions"><button id="model-auto-cancel">取消自动分析</button></div>' : ''}
       ${disclosure('reasons', '详细分析', `${handSection}${r ? `${resultHtml(result)}${localHtml(result.localAnalysis, result.positionPhase)}<p class="analysis-meta muted">${escape(result.model)} · ${escape(result.time)}${stale ? ' · 旧结果' : ' · 对应分析时快照'}</p>` : '<p class="muted">尚未生成分析结果。</p>'}`)}
       ${globalHtml}
       ${disclosure('controls', '分析设置', settings)}
@@ -290,6 +307,11 @@
     const renderKey = markup.replace(/(<details data-section="[^"]+")\s*(?:open)?\s*>/g, '$1>');
     if (rendered.get(container) !== renderKey) { container.innerHTML = markup; rendered.set(container, renderKey); }
     const $ = id => container.querySelector('#' + id);
+    for (const [scope, message] of [['automatic', failure], ['global', globalFailure]]) {
+      if (message && modelFailures[scope]?.error === message) $('model-failure-' + scope).onclick = () => {
+        modelFailureExpanded[scope] = !modelFailureExpanded[scope]; render();
+      };
+    }
     if (modeControls) {
       $('analysis-mode-live').onclick = () => current.onMode('live');
       $('analysis-mode-replay').onclick = () => current.onMode('replay');
@@ -329,7 +351,7 @@
       $(id).onchange = e => { if (e.isTrusted) changePreferences({ [key]: Math.min(max, Math.max(min, Math.trunc(Number(e.target.value)) || min)) }); };
     }
     $('model-preview').onclick = () => { preview = !preview; render(); };
-    if (busy) $(pendingAutomatic ? 'model-auto-cancel' : 'model-cancel').onclick = event => { if (event.isTrusted) { const wasAutomatic = pendingAutomatic; cancelWork(); if (wasAutomatic) failure = '已取消分析。'; else globalFailure = '已取消分析。'; render(); } };
+    if (globalBusy) $('model-cancel').onclick = event => { if (event.isTrusted) { cancelWork(); globalFailure = '已取消分析。'; render(); } };
     $('model-run').onclick = event => { if (event.isTrusted && preferencesLoaded) return runAnalysis(); };
     if (selectedSnapshot && context?.mode === 'live') {
       const nextRound = JSON.stringify([ selectedSnapshot.game?.round, selectedSnapshot.game?.honba]);
