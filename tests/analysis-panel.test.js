@@ -82,7 +82,7 @@ test('background notifications refresh model availability and provider without s
   status = { ...status, enabled: true, provider: 'mjai' };
   p.configChanged(); await flush();
   assert.doesNotMatch(p.html(), /请在模型设置中接入并开启模型/);
-  assert.match(p.html(), /当前来源：自选本地 mjai 引擎/);
+  assert.match(p.html(), /本地 mjai：/);
   status = { ...status, enabled: false };
   p.configChanged(); await flush();
   assert.match(p.html(), /请在模型设置中接入并开启模型/);

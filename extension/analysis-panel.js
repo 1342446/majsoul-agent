@@ -231,16 +231,15 @@
       <p class="muted">按所选事件分析，游标需手动与游戏画面对齐。</p>` : '<p class="muted">请在雀魂中打开牌谱，载入后可选择视角和分析位置。</p>'}
       </div>` : '';
 
-    const settings = `<div class="controls"><button id="model-settings" ${!available ? 'disabled' : ''}>模型设置</button><button id="model-refresh" ${!available ? 'disabled' : ''}>刷新设置状态</button></div>
-      ${preferences.useModel && provider === 'mjai' ? '<p class="muted">当前来源：自选本地 mjai 引擎。需授权对局、全部公开牌河、自家手牌及本局动作顺序；仅支持无副露四麻决策。</p>' : ''}
-      <label>模型调用时机 <select id="model-from-turn"><option value="1">每巡</option><option value="7">第 N 巡起</option></select></label>
+    const settings = `<div class="controls"><button id="model-settings" ${!available ? 'disabled' : ''}>模型设置</button><button id="model-refresh" ${!available ? 'disabled' : ''}>刷新状态</button></div>
+      ${preferences.useModel && provider === 'mjai' ? '<p class="muted">本地 mjai：使用公开牌局、自家手牌和动作记录；仅支持无副露四麻。</p>' : ''}
+      <label title="按自家出牌次数计巡，补牌不加巡；复盘仅手动分析。">调用时机 <select id="model-from-turn"><option value="1">每巡</option><option value="7">第 N 巡起</option></select></label>
       ${preferences.modelFromTurn > 1 ? `<label>开始巡数 <input id="model-turn-number" type="number" min="2" max="18" value="${preferences.modelFromTurn}"></label>` : ''}
-      <p class="muted">巡数由采集层按自家打牌次数维护，杠后补牌不额外加巡。仅在巡目可信且达到设定巡数时调用模型；未知时保持本地分析。“每巡”不依赖巡目阈值。复盘仅手动分析。</p>
-      <label>模型最小调用间隔（秒） <input id="model-interval" type="number" min="1" max="60" value="${preferences.interval}"></label>
-      <label>每局自动模型调用上限 <input id="model-limit" type="number" min="1" max="100" value="${preferences.limit}"></label>
-      <p class="muted">本局已自动调用 ${autoCalls} / ${preferences.limit} 次。手动分析不受自动调用上限限制。</p>
-      ${preferences.useModel ? `<p class="muted">模型分析会向你配置的服务发送对局公开信息与自家手牌，可能产生费用。不发送对手暗牌或账号凭据。</p><button id="model-consent">${preferences.consent ? '撤回模型数据授权' : '同意以上数据用于模型分析'}</button>` : '<p class="muted">当前仅本地分析，不向模型接口发送数据。提供向听、进张及现物／筋／壁依据；综合攻守解释需要模型。</p>'}
-      <div class="analysis-calibration"><button id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button><p class="muted">${current.hintsReady ? '首次使用需校准手牌位置；可随时重新校准。' : '进入游戏牌桌后可校准手牌提示。'}</p></div><button id="model-preview">${preview ? '收起' : '查看'}分析数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
+      ${preferences.modelFromTurn > 1 ? '<p class="muted">未达指定巡数或巡目未知时，仅本地分析。</p>' : ''}
+      <label>调用间隔（秒） <input id="model-interval" type="number" min="1" max="60" value="${preferences.interval}"></label>
+      <label title="仅限制自动调用，手动分析不受限。">每局调用上限 <input id="model-limit" type="number" min="1" max="100" value="${preferences.limit}"> <span class="muted">已用 ${autoCalls} 次</span></label>
+      ${preferences.useModel ? `<p class="muted">向配置的服务发送公开牌局与自家手牌，可能产生费用。</p><button id="model-consent">${preferences.consent ? '撤回授权' : '授权模型分析'}</button>` : '<p class="muted">本地计算，不发送数据。</p>'}
+      <div class="analysis-calibration"><button title="${current.hintsReady ? '首次使用需校准手牌位置，可随时重校。' : '进入游戏牌桌后可校准手牌提示。'}" id="analysis-calibrate" ${current.hintsReady ? '' : 'disabled'}>${current.hintsCalibrated ? '重新校准手牌提示' : '校准手牌提示'}</button></div><button id="model-preview">${preview ? '收起' : '查看'}分析数据</button>${preview ? `<pre>${escape(payload || error)}</pre>` : ''}${error ? `<p class="warn">${escape(error)}</p>` : ''}`;
     const markup = `<section class="analysis" aria-label="模型分析">
       ${modeControls}${replayControls}
       <div class="analysis-switches" role="group" aria-label="辅助功能">
@@ -259,7 +258,7 @@
       </div>
       <div class="analysis-actions"><button id="model-run" ${busy || !!error || !hasFeatures() || !preferencesLoaded ? 'disabled' : ''}>${busy ? '正在分析…' : replay ? '分析所选局面' : '分析当前局面'}</button>${busy ? '<button id="model-cancel">取消</button>' : ''}</div>
       ${disclosure('reasons', '详细分析', `${handSection}${r ? `${resultHtml(result)}${localHtml(result.localAnalysis, result.positionPhase)}<p class="analysis-meta muted">${escape(result.model)} · ${escape(result.time)}${stale ? ' · 旧结果' : ' · 对应分析时快照'}</p>` : '<p class="muted">尚未生成分析结果。</p>'}`)}
-      ${disclosure('controls', '分析设置 · 调用时机与数据授权', settings)}
+      ${disclosure('controls', '分析设置', settings)}
       <footer class="analysis-footer"><button id="analysis-collector">牌局获取器</button><button id="analysis-history">整场记录</button></footer>
       </section>`;
     // Native disclosure toggles already update the DOM; do not rebuild the form
