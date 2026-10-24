@@ -9,7 +9,12 @@
       analysis.render();
       if (!state.editing) document.getElementById('mj-agent-host')?.shadowRoot?.querySelector('#analysis-calibrate')?.focus({ preventScroll: true });
     } });
-    const hintHooks = { onHints: value => hints.update(value) };
+    let memoryAdvice = null;
+    const hintHooks = { onHints: value => {
+      memoryAdvice = value?.decision ? JSON.stringify({ action: value.decision.action, tile: value.decision.tile,
+        reasons: (value.decision.reasons || []).filter(reason => typeof reason === 'string').slice(0, 3).map(reason => reason.slice(0, 160)) }) : null;
+      hints.update(value);
+    } };
     const panel = root.MJCollectorPanel.create({ controller, title: '雀魂牌局获取器', tileBase: ports.tileBase, collapsed: false, dismissible: true });
     const analysis = root.MJFloatingPanel.create({ id: 'mj-agent-host', title: 'Majsoul Agent', positionKey: 'mj-agent-panel-position-v1',
       onRender(container, render) {
@@ -81,8 +86,18 @@
     analysis.mount();
     // The analysis renderer invalidates stale hints synchronously with each state change.
     const unsubscribe = controller.subscribe(() => analysis.render());
-    const disconnect = ports.connect(controller);
-    return { controller, panel, analysis, hints, destroy() { disconnect(); unsubscribe(); root.MJAnalysisPanel.destroy?.(); root.MJNagaPanel.destroy(); hints.destroy(); analysis.destroy(); panel.destroy(); } };
+    const memory = root.MJUserMemoryCapture.create({
+      send: message => root.chrome?.runtime?.sendMessage(message) || Promise.resolve({ enabled: false }),
+      snapshot: root.MJCollectorSnapshot.snapshot
+    });
+    memory.status();
+    const onMemoryConfig = message => { if (message?.type === 'model:config-changed') memory.status(); };
+    root.chrome?.runtime?.onMessage?.addListener(onMemoryConfig);
+    const disconnect = ports.connect({ receive(message) {
+      const before = controller.getView(), advice = memoryAdvice; controller.receive(message);
+      memory.record(before, message, controller.getView(), advice);
+    } });
+    return { controller, panel, analysis, hints, destroy() { root.chrome?.runtime?.onMessage?.removeListener(onMemoryConfig); disconnect(); unsubscribe(); root.MJAnalysisPanel.destroy?.(); root.MJNagaPanel.destroy(); hints.destroy(); analysis.destroy(); panel.destroy(); } };
   }
   root.MJAgentApp = { start };
   if (typeof document !== 'undefined') {

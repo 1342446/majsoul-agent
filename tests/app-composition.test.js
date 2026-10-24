@@ -52,6 +52,7 @@ test('agent composition keeps collection, floating analysis and hand hints on in
     MJNagaPanel: { mount(container, options) { naga = options; } } };
   vm.runInNewContext(read('collector/controller.js'), context);
   vm.runInNewContext(read('collector/browser-adapter.js'), context);
+  vm.runInNewContext(read('user-memory-capture.js'), context);
   vm.runInNewContext(read('apps/agent-app.js'), context);
   assert.equal(configured.extensionSlot, undefined); assert.equal(configured.collapsed, false);
   assert.equal(configured.dismissible, true); assert.equal(collectorMounts, 0);

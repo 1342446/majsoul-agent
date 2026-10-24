@@ -7,7 +7,7 @@
       : Object.fromEntries(Object.keys(value).sort().filter(k => value[k] !== undefined).map(k => [k, JSON.parse(canonical(value[k]) ?? 'null')])) : value);
   // The configuration itself is never retained. Callers provide only a public revision/selection.
   function publicConfig(config = {}) {
-    return Object.fromEntries(['revision', 'selection', 'mode', 'promptVersion', 'temperature', 'maxTokens'].filter(k => config[k] !== undefined).map(k => [k, config[k]]));
+    return Object.fromEntries(['revision', 'memoryVersion', 'selection', 'mode', 'promptVersion', 'temperature', 'maxTokens'].filter(k => config[k] !== undefined).map(k => [k, config[k]]));
   }
   function hash(value) {
     const text = canonical(value); let a = 2166136261, b = 5381;

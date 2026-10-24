@@ -32,5 +32,19 @@
 <div class="actions"><button type="button" id="exportUsage">导出用量记录</button><button type="button" id="clearAgentData">清除本地会话和运行用量</button></div>
 <p class="hint">用量记录保存在本机，可导出 token 和费用；不包含提示词、牌局正文或密钥。</p>
 </form><p id="status" role="status" aria-live="polite"></p>
+<section aria-labelledby="memoryTitle">
+<h2 id="memoryTitle">整场记忆学习</h2>
+<label><input id="memoryEnabled" type="checkbox"> 为本机自家档案采集并学习实战行为（默认关闭）</label>
+<p class="hint">仅采集开启后 live 实战的已识别自家手牌、公开桌面和真实动作。请只在本人参与对局时开启；观看、牌谱和历史复盘不会自动学为自己。本机档案不跨账号识别，换账号前请关闭或清除。</p>
+<p class="hint">小局结束只记录证据；明确整场东风 / 半庄结束，且至少 3 个覆盖可靠完整小局、20 个完整自家动作时，才使用当前自配模型额外请求一次总结。默认只新增待确认候选，额外 token 和费用单列在下方任务记录。实时分析优先；浏览器关闭或 worker 休眠不保证后台继续，未知请求不会自动重试。</p>
+<label for="memoryPreference">明确偏好（手动保存立即生效，最多 300 字）</label>
+<textarea id="memoryPreference" maxlength="300" rows="3" placeholder="例如：解释时先说明安全依据，再说明牌效率。"></textarea>
+<div class="actions"><button type="button" id="memorySave">保存明确偏好</button><button type="button" id="memoryRefresh">刷新记忆</button><button type="button" id="memoryClear">清除所有记忆与证据并关闭学习</button></div>
+<p class="hint">关闭学习会取消待处理任务并停止采集和自动总结；已保存记忆仍可用于后续小局的解释重点，也可查看与删除。修正、删除或清除会取消旧会话，防止旧版本重新写回。</p>
+<div id="memoryEntries"></div>
+<details><summary>记忆任务与额外用量</summary><pre id="memoryJobs"></pre></details>
+<details><summary>原始任务记录（复现用）</summary><pre id="memoryRawJobs"></pre></details>
+<p id="memoryStatus" role="status" aria-live="polite"></p>
+</section>
 <p class="hint footnote">密钥仅保存在本机。</p>
-</main><script src="adapters/model-endpoint.js"></script><script src="adapters/engine-endpoint.js"></script><script src="options.js"></script></body></html>
+</main><script src="adapters/model-endpoint.js"></script><script src="adapters/engine-endpoint.js"></script><script src="options.js"></script><script src="options-memory.js"></script></body></html>

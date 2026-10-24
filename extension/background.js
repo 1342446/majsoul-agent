@@ -4,7 +4,12 @@ importScripts('harness.js', 'agent.js');
 importScripts('pi-runtime.js', 'round-context.js', 'model-usage.js', 'model-session-transport.js', 'agent-run-store.js');
 importScripts('contracts/engine-result.js', 'engine-agent.js');
 importScripts('history.js', 'history-storage.js');
+importScripts('user-memory.js', 'user-memory-agent.js', 'user-memory-worker.js');
 const pending = new Map();
+const memoryWorker = MJUserMemoryWorker.create({ storage: chrome.storage.local, permissions: chrome.permissions,
+  fetchModel: (...args) => fetch(...args), busy: () => pending.size > 0, runtime: MJPiRuntime, readJson });
+// Worker startup is a recovery opportunity, not a promise of background execution.
+memoryWorker.pump();
 const roundContexts = MJRoundContext.createStore({ storage: chrome.storage.local });
 const runStore = MJRunStore.create({ storage: chrome.storage.local });
 let revisionPromise = null;
@@ -20,6 +25,7 @@ async function configRevision() {
 }
 async function clearAgentData(clearRuns = true) {
   for (const controller of pending.values()) controller.abort();
+  memoryWorker.cancel();
   const revision = newRevision(); revisionPromise = Promise.resolve(revision);
   await Promise.all([roundContexts.reset(), clearRuns ? runStore.clear() : Promise.resolve(), chrome.storage.local.set?.({ agentConfigRevision: revision })]);
 }
@@ -29,7 +35,8 @@ chrome.storage.onChanged.addListener((changes, area) => {
   for (const controller of pending.values()) controller.abort();
   // Content scripts cannot observe changes to TRUSTED_CONTEXTS storage.
   // Send only an invalidation signal; credentials stay in the worker.
-  return Promise.allSettled([clearAgentData(false), notifyModelConfigChanged()]);
+  memoryWorker.cancel();
+  return Promise.allSettled([clearAgentData(false), memoryWorker.store.invalidate()]).then(notifyModelConfigChanged);
 });
 async function notifyModelConfigChanged() {
   try {
@@ -41,7 +48,25 @@ async function notifyModelConfigChanged() {
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   const game = sender.tab && sender.frameId === 0 && sender.url?.startsWith('https://game.maj-soul.com/');
-  if (message?.type === 'agent:usage' && sender.url === chrome.runtime.getURL?.('options.html')) {
+  const optionsPage = sender.url === chrome.runtime.getURL?.('options.html');
+  if (message?.type === 'memory:status' && (game || optionsPage)) {
+    memoryWorker.store.status().then(value => respond(game ? { enabled: value.enabled, generation: value.generation } : { ok: true, ...value })).catch(() => respond({ ok: false })); return true;
+  }
+  if (message?.type === 'memory:evidence' && game) {
+    if (!Number.isSafeInteger(message.evidence?.generation)) { respond({ ok: false }); return; }
+    memoryWorker.store.ingest(message.evidence).then(value => { respond({ ok: true, ...value }); memoryWorker.pump(); }).catch(() => respond({ ok: false })); return true;
+  }
+  if (message?.type === 'memory:round-start' && game) {
+    const identity = message.identity || {};
+    memoryWorker.store.pin(`${sender.tab.id}:${identity.matchId}:${identity.roundStartId}`).then(() => respond({ ok: true })).catch(() => respond({ ok: false })); return true;
+  }
+  if (['memory:configure', 'memory:edit', 'memory:clear'].includes(message?.type) && optionsPage) {
+    memoryWorker.cancel();
+    const operation = message.type === 'memory:clear' ? memoryWorker.store.clear()
+      : message.type === 'memory:configure' ? memoryWorker.store.configure(message.enabled) : memoryWorker.store.edit(message.edit || {});
+    Promise.all([operation, clearAgentData(false)]).then(([value]) => { respond({ ok: true, ...value }); notifyModelConfigChanged(); }).catch(() => respond({ ok: false, error: '记忆更新失败，请重试。' })); return true;
+  }
+  if (message?.type === 'agent:usage'  && sender.url === chrome.runtime.getURL?.('options.html')) {
     runStore.list().then(records => respond({ ok: true, records })).catch(() => respond({ ok: false, error: '读取用量记录失败。' })); return true;
   }
   if (message?.type === 'agent:clear-data' && !sender.tab?.url?.startsWith('https://game.maj-soul.com/') && sender.url === chrome.runtime.getURL?.('options.html')) {
@@ -78,6 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     if (pending.has(key)) throw new Error('已有分析正在进行。');
     // Reserve before the first await so cancellation and configuration changes
     // cover storage/permission preflight as well as the eventual fetch.
+    memoryWorker.cancel();
     const controller = new AbortController(); pending.set(key, controller);
     let timer = setTimeout(() => controller.abort(), 25000);
     const checkCancelled = () => {
@@ -126,13 +152,17 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       {
         const info = message.context || {}, identity = info.identity || {};
         const revision = await configRevision(); checkCancelled();
+        const memory = lane === 'live' && message.snapshot.source === 'live' && typeof identity.roundStartId === 'string'
+          ? await memoryWorker.store.pin(`${key}:${identity.matchId}:${identity.roundStartId}`).catch(() => ({ version: 0, entries: [] })) : { version: 0, entries: [] };
+        checkCancelled();
         session = await roundContexts.observe({ snapshot: message.snapshot, scope: String(key),
           identity: { matchId: typeof identity.matchId === 'string' ? `${key}:${identity.matchId.slice(0, 160)}` : null,
             roundStartId: identity.roundStartId, viewId: identity.viewId },
           position: info.position, events: info.events, eventWindowStart: info.eventWindowStart, historyComplete: info.historyComplete,
           lane, provider: url.href, model: c.model, task,
-          config: { revision, mode: contextMode, promptVersion: 2, maxTokens: c.maxTokens, selection: true } });
+          config: { revision, memoryVersion: memory.version, mode: contextMode, promptVersion: 2, maxTokens: c.maxTokens, selection: true } });
         checkCancelled(); sessionContext = await roundContexts.getContext(session);
+        if (lane === 'live' && memory.entries.length) sessionContext.userMemory = memory;
       }
       const records = [], started = Date.now(), epoch = runStore.epoch(), runId = newRevision(); let status = 'failed', attempts = 0, outcome, sessionTurn;
       const totals = () => {
@@ -197,7 +227,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         }
       }
       return outcome;
-    } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
+    } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); memoryWorker.pump(); }
   })().then(respond).catch(error => respond({ ok: false, error: modelError(error), ...(error.validation ? { validation: error.validation } : {}), ...(accounting || {}), ...(rawModelResult && error.name !== 'AbortError' ? { rawModelResult } : {}) }));
   return true;
 });

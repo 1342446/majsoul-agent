@@ -72,6 +72,51 @@ async function until(predicate) {
   assert.fail('Worker did not reach expected asynchronous checkpoint');
 }
 
+test('user memory is absent by default, frozen only for live self analysis, and optional persistence fails open', async () => {
+  const w = worker();
+  assert.equal((await w.analyze(1, { lane: 'live' })).ok, true);
+  assert.equal(w.requests.at(-1).body.tools.some(tool => tool.function.name === 'get_user_memory'), false);
+  assert.equal((await w.call({ type: 'memory:edit', edit: { value: '先说明安全依据。' } }, w.options)).ok, true);
+  assert.equal((await w.analyze(2, { lane: 'live' })).ok, true);
+  assert.equal(w.requests.at(-1).body.tools.some(tool => tool.function.name === 'get_user_memory'), true);
+  assert.match(w.requests.at(-1).body.messages[0].content, /固定版本/);
+  assert.equal((await w.analyze(3, { lane: 'manual-review' })).ok, true);
+  assert.equal(w.requests.at(-1).body.tools.some(tool => tool.function.name === 'get_user_memory'), false);
+  assert.equal((await w.analyze(4, { lane: 'live', snapshot: { ...position(4), source: 'replay' } })).ok, true);
+  assert.equal(w.requests.at(-1).body.tools.some(tool => tool.function.name === 'get_user_memory'), false);
+  const local = storage(w.local.values), base = local.set.bind(local);
+  local.set = async value => { if (value.agentUserMemoryV1) throw new Error('memory quota'); return base(value); };
+  const restart = worker({ local });
+  assert.equal((await restart.analyze(5, { lane: 'live' })).ok, true);
+  assert.equal(restart.requests.at(-1).body.tools.some(tool => tool.function.name === 'get_user_memory'), false);
+});
+test('realtime analysis preempts a running memory HTTP request; memory accounting stays separate and no retry occurs', async () => {
+  const Memory = require('../extension/user-memory.js'), local = storage(), memory = Memory.create({ storage: local });
+  await memory.configure(true);
+  for (let round = 0; round < 3; round++) {
+    const evidence = (step, kind, extra = {}) => ({ source: 'live', matchId: 'preempt-match', roundId: `r${round}`, position: step, kind,
+      selfSeat: 0, identityKnown: true, reliable: true, ...extra });
+    await memory.ingest(evidence(0, 'NewRound'));
+    for (let step = 1; step <= 7; step++) {
+      const snap = position(step); snap.game.turnProgress = { status: 'known', source: 'events', bySeat: [1,1,1,1] };
+      snap.rivers = Array.from({ length: 4 }, (_, seat) => ({ seat, discards: [] }));
+      await memory.ingest(evidence(step, 'DiscardTile', { snapshot: snap, actual: { seat: 0, tile: '1m' } }));
+    }
+    await memory.ingest(evidence(8, 'Hule', { gameEnded: round === 2 }));
+  }
+  let backgroundSignal;
+  const w = worker({ local, responses: [request => new Promise(resolve => {
+    backgroundSignal = request.options.signal;
+    backgroundSignal.addEventListener('abort', () => resolve({ choices: [{ finish_reason: 'stop', message: { content: '{"candidates":[]}' } }] }), { once: true });
+  }), reply('LIVE_WINS')] });
+  await until(() => w.requests.length === 1);
+  assert.equal(w.requests[0].body.max_tokens, 2048); assert.equal(w.requests[0].body.tools, undefined);
+  const result = await w.analyze(1, { lane: 'live' }); assert.equal(result.ok, true); assert.equal(backgroundSignal.aborted, true);
+  await until(() => local.values.agentUserMemoryV1.jobs[0].status === 'cancelled');
+  assert.equal(w.requests.length, 2); assert.equal(local.values.agentUserMemoryV1.jobs[0].accounting.lane, 'memory');
+  assert.equal(local.values.agentRunsV1.some(record => record.lane === 'memory'), false);
+});
+
 test('actual MV3 bundle upgrades legacy settings to round and default tools', async () => {
   const w = worker({ config: { contextMode: 'snapshot' }, responses: [reply()] });
   const result = await w.analyze();

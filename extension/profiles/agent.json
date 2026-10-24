@@ -48,6 +48,7 @@
         "floating-panel.js",
         "hand-hints.js",
         "naga-panel.js",
+        "user-memory-capture.js",
         "apps/agent-app.js"
       ],
       "run_at": "document_start",
