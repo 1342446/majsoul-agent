@@ -502,3 +502,17 @@ test('oversized event windows are rejected intact rather than sliced into an app
   await assert.rejects(store.observe(input(2, { events: Array(4097).fill({ kind: 'DealTile', source: 'live', seat: 0, tile: '2m', step: 2 }) })), /input limit/);
   assert.deepEqual(await store.getContext(handle), before);
 });
+
+
+test('prompt version 3 never reuses version 2 requests as a supposedly identical prefix', async () => {
+  const local = memory(), legacy = createStore({ storage: local });
+  const old = await legacy.observe(input(1, { config: { promptVersion: 2 } }));
+  await legacy.appendExchange(old, { id: 'v2', request: 'OLD_FULL_SNAPSHOT_REQUEST', answer: 'OLD_PREFIX' });
+  const restored = createStore({ storage: local });
+  const next = await restored.observe(input(2, { config: { promptVersion: 3 } }));
+  assert.notEqual(next.id, old.id);
+  const context = await restored.getContext(next);
+  assert.deepEqual(context.timeline, []);
+  assert.equal(context.baseline.position, 2);
+  assert.doesNotMatch(JSON.stringify(context), /OLD_FULL_SNAPSHOT_REQUEST|OLD_PREFIX/);
+});

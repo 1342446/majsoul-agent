@@ -160,7 +160,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
             roundStartId: identity.roundStartId, viewId: identity.viewId },
           position: info.position, events: info.events, eventWindowStart: info.eventWindowStart, historyComplete: info.historyComplete,
           lane, provider: url.href, model: c.model, task,
-          config: { revision, memoryVersion: memory.version, mode: contextMode, promptVersion: 2, maxTokens: c.maxTokens, selection: true } });
+          config: { revision, memoryVersion: memory.version, mode: contextMode, promptVersion: 3, maxTokens: c.maxTokens, selection: true } });
         checkCancelled(); sessionContext = await roundContexts.getContext(session);
         if (lane === 'live' && memory.entries.length) sessionContext.userMemory = memory;
       }

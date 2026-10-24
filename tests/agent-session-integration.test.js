@@ -142,7 +142,7 @@ test('manual round context survives a worker restart; realtime does not replay a
   assert.doesNotMatch(JSON.stringify(restored.requests[1].body.messages), /PAST_ANSWER|NEXT_ANSWER/);
 });
 
-test('each lane sends one baseline and appends exact successful Pi prefixes plus current fact patches', async () => {
+test('each lane sends one baseline and appends exact successful Pi prefixes plus current state and new events', async () => {
   for (const lane of ['live', 'manual-review']) {
     const w = worker({ responses: [reply('FIRST_PREFIX'), reply('SECOND_PREFIX'), reply('THIRD_PREFIX')] });
     for (const step of [10, 17, 23]) {
@@ -161,7 +161,9 @@ test('each lane sends one baseline and appends exact successful Pi prefixes plus
     assert.deepEqual(messages[2].slice(0, messages[1].length), messages[1]);
     for (const current of messages) {
       assert.equal(current.filter(m => m.role === 'user' && m.content.includes('初始基线')).length, 1);
-      assert.equal(current.filter(m => m.role === 'user' && m.content.includes('"format":"mj-analysis-v1"')).length, 1);
+      assert.equal(current.filter(m => m.role === 'user' && m.content.includes('"format":"mj-analysis-v1"')).length, 0);
+      assert.doesNotMatch(current.map(m => m.content).join('\n'), /"changes"|"rivers"|"remaining"/);
+      assert.equal(JSON.parse(current.at(-1).content.split('\n')[1]).currentState.position, [10, 17, 23][messages.indexOf(current)]);
     }
     assert.match(JSON.stringify(messages[2]), /FIRST_PREFIX|SECOND_PREFIX/);
     const observations = w.local.values.agentRoundContextV1.sessions[0].timeline.filter(e => e.type === 'observation');
@@ -196,6 +198,7 @@ test('replay rewind and authorization changes do not send future or unselected i
   const rewind = await w.analyze(2);
   assert.equal(rewind.ok, true); assert.ok(rewind.session.branch > future.session.branch);
   assert.doesNotMatch(JSON.stringify(w.requests[1].body), /FUTURE_ANSWER|OPPONENT_SECRET/);
+  assert.equal(JSON.parse(w.requests[1].body.messages.at(-1).content.split('\n')[1]).currentState.position, 2);
   const selected = position(3); delete selected.game; delete selected.selfHand;
   assert.equal((await w.analyze(3, { snapshot: selected })).ok, true);
   const sent = JSON.stringify(w.requests[2].body);
