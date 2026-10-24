@@ -31,12 +31,19 @@
             let start = prefix.length - 1;
             while (start >= 0 && prefix[start].kind !== 'NewRound') start--;
             // The worker applies the actual data-selection whitelist again before storing or sending.
-            const events = prefix.slice(Math.max(start, prefix.length - 64)).map(e => ({
+            const windowStart = Math.max(0, start, prefix.length - 64);
+            const window = prefix.slice(windowStart);
+            const replay = view.mode === 'replay' && !view.historical;
+            const eventPosition = e => replay ? (Number.isInteger(e.recordIndex) ? e.recordIndex + 1 : null) : (Number.isInteger(e.step) ? e.step : null);
+            // Replay cursor counts records; recordIndex is zero-based. Coverage uses cursor coordinates.
+            const eventWindowStart = window.map(eventPosition).find(p => p !== null) ?? null;
+            const events = window.map(e => ({
               kind: e.kind, source: e.source, step: e.step, recordIndex: e.recordIndex, seat: e.seat,
               tile: e.kind === 'DealTile' && e.seat !== state.selfSeat ? '?' : e.tile,
               tiles: e.tiles, meldType: e.meldType, riichi: e.riichi, tsumogiri: e.tsumogiri
             }));
-            return { identity: view.contextIdentity, position: view.mode === 'replay' && !view.historical ? view.cursor : state.lastStep, events };
+            return { identity: view.contextIdentity, position: replay ? view.cursor : state.lastStep, events,
+              eventWindowStart, historyComplete: start >= 0 && windowStart === start };
           },
           engineRequest: selection => {
             if (!selection.game || selection.rivers !== 'all' || !selection.hand) throw new Error('专业引擎需要授权对局信息、全部牌河和自家手牌。');

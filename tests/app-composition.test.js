@@ -74,14 +74,16 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   const round = { kind: 'NewRound', source: 'live', step: 0, wind: 0, round: 0, honba: 0, sticks: 0, remaining: 69, doras: ['1p'], scores: [25000,25000,25000,25000], hand: liveHand, operation: { seat: 1, types: [1] } };
   configured.controller.receive({ type: 'event', payload: round });
   configured.controller.receive({ type: 'replay', payload: { records: [
-    { ...round, source: 'replay', hand: undefined, hands: [replayHand,replayHand,replayHand,replayHand] },
-    { kind: 'DealTile', source: 'replay', step: 1, seat: 0, tile: '2z' }
+    { ...round, source: 'replay', recordIndex: 0, hand: undefined, hands: [replayHand,replayHand,replayHand,replayHand] },
+    { kind: 'DealTile', source: 'replay', recordIndex: 1, step: 1, seat: 0, tile: '2z' }
   ] } });
   assert.equal(mounted[2].mode, 'replay'); assert.equal(mounted[1].recordCount, 2);
   mounted[1].onSelfSeat(0);
   assert.deepEqual(Array.from(mounted[1].selfHand), replayHand);
   mounted[1].onCursor(2); assert.equal(mounted[1].drawnTile, '2z');
   assert.equal(mounted[1].analysisContext().position, 2);
+  assert.equal(mounted[1].analysisContext().eventWindowStart, 1);
+  assert.equal(mounted[1].analysisContext().historyComplete, true, JSON.stringify(configured.controller.getView().diagnostics));
   assert.ok(mounted[1].analysisContext().events.some(e => e.tile === '2z'));
   mounted[1].onCursor(1); assert.equal(mounted[1].selfHand.includes('2z'), false);
   assert.equal(mounted[1].analysisContext().events.some(e => e.tile === '2z'), false);
@@ -91,6 +93,13 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   mounted[1].onMode('replay'); assert.equal(mounted[2].cursor, 1);
   assert.deepEqual(Array.from(mounted[1].selfHand), replayHand);
   mounted[1].onMode('live'); assert.equal(mounted[1].drawnTile, '8p');
+  configured.controller.receive({ type: 'event', payload: { kind: 'DealTile', source: 'live', step: 7, seat: 0, tile: '7z' } });
+  assert.equal(mounted[1].analysisContext().events.at(-1).tile, '?');
+  assert.equal(mounted[1].analysisContext().historyComplete, false);
+  for (let i = 0; i < 65; i++) configured.controller.receive({ type: 'event', payload: { kind: 'DiscardTile', source: 'live', step: 10 + i * 2, seat: 0, tile: '1m' } });
+  const coverage = mounted[1].analysisContext();
+  assert.equal(coverage.events.length, 64); assert.equal(coverage.historyComplete, false);
+  assert.equal(coverage.eventWindowStart, 12); assert.ok(coverage.events.every(e => e.kind !== 'NewRound'));
 });
 test('presentation module loads with no DOM and never mounts automatically', () => {
   const context = {}; vm.runInNewContext(read('overlay.js'), context);

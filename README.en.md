@@ -12,6 +12,8 @@ The stable **0.6.0** release includes live/replay switching, local and model ana
 
 This release adds Pi, round sessions, four read-only tools, follow-ups, and usage accounting. Single snapshots and tools disabled remain the defaults. Tool support depends on the configured API; real-service sessions, cache hits, and cost savings remain unverified. Automated tests do not establish real model quality or playing strength.
 
+**Current source update (unreleased)**: model analysis uses round sessions and six default read-only tools; the API must support tools. Live runs allow at most 2 model requests, manual runs 3, with up to 4 tool calls each. One current baseline is followed by event, authorized JSON Patch and successful exchange appends; mid-round starts and coverage gaps do not fabricate history. Published 0.6.0 downloads do not include this update.
+
 The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
 ![Floating analysis card with synthetic game data and model output](docs/images/agent-floating-preview.png)
@@ -54,7 +56,7 @@ Only **`https://game.maj-soul.com/*`** is currently matched. Other regional doma
 
 The collector controller owns table state, replay cursors, history, and exports; the UI interacts through views and commands. A separate adapter maps the user's selection to the standard `mj-analysis-v1` DTO. The Agent depends on the pure data contract without reading collector state layouts, so another collector can supply the same DTO. The analysis panel receives only a snapshot function and display inputs. Composition entries connect these components; see [decoupling design](docs/DECOUPLING.md) and [architecture](ARCHITECTURE.md) (Chinese).
 
-The worker runs the real upstream `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0 lightweight Agent loop, adapted and bundled for MV3. Networking still uses the existing OpenAI-compatible transport; this does not add all providers' native SDKs. The harness retains snapshot validation, local preparation, model execution, strict result validation, cancellation, and traces. Default runs make one model request. Enabling tools allows at most 3 model requests and 4 tool calls per manual review; live analysis stays at 1 model request without a multi-turn tool chain. DeepSeek Harness is a design reference, not a dependency. See [round sessions and usage](docs/AGENT_SESSIONS.md) (Chinese).
+The worker runs the real upstream `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0 lightweight Agent loop, adapted and bundled for MV3. Networking still uses the existing OpenAI-compatible transport; this does not add all providers' native SDKs. The harness retains snapshot validation, local preparation, model execution, strict result validation, cancellation, and traces. The API must support tools. Manual reviews allow at most 3 model requests, live analysis at most 2, with up to 4 tool calls each. DeepSeek Harness is a design reference, not a dependency. See [round sessions and usage](docs/AGENT_SESSIONS.md) (Chinese).
 
 Review a collector `mj-observer-v1` JSON export locally with Node.js 22.19+:
 
@@ -67,7 +69,7 @@ npm run eval
 
 ## LLM setup
 
-`snapshot` does not persist conversations by default; optional `round` retains bounded history within a round. Rules and a static schema precede dynamic data, but Chat Completions still retransmits history. Fewer network bytes, server cache hits, and lower billed cost are separate outcomes; savings are not promised. Missing usage or partial failures leave unconfirmed totals and costs unknown. See [authorization and caching](docs/AGENT_SESSIONS.md) (Chinese).
+`round` sends the current round baseline once, then appends new events, authorized snapshot JSON Patch changes and successful exchanges in order. Mid-round starts are labeled; coverage gaps create a new checkpoint. Rules and a static schema precede dynamic data, but Chat Completions still retransmits history. Fewer network bytes, server cache hits, and lower billed cost are separate outcomes; savings are not promised. Missing usage or partial failures leave unconfirmed totals and costs unknown. See [authorization and caching](docs/AGENT_SESSIONS.md) (Chinese).
 
 The full edition accepts your own model API; no project-specific service or account is required. LLM analysis and explanation remain the main use. The default provider is `chat`, with analysis disabled. One `chat` and one optional `mjai` configuration are retained separately; only the selected provider runs per request.
 

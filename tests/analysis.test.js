@@ -196,7 +196,8 @@ test('worker authenticates sender, keeps credentials out of status and uses non-
   const result = await w.analyze(); assert.equal(result.ok, true); assert.match(result.result.decision.reasons[0], /数据不足/); assert.ok(result.localAnalysis.efficiency);
   const { options } = w.requests[0]; const body = JSON.parse(options.body);
   assert.equal(options.headers.Authorization, 'Bearer test-key'); assert.equal(options.redirect, 'error'); assert.equal(options.credentials, 'omit');
-  assert.equal(body.stream, false); assert.equal(body.model, 'mock-model'); assert.equal(body.messages.length, 2);
+  assert.equal(body.stream, false); assert.equal(body.model, 'mock-model'); assert.equal(body.messages.length, 3);
+  assert.equal(body.tools.length, 6); assert.equal(result.contextMode, 'round');
   assert.equal(JSON.stringify(body).includes('test-key'), false);
 });
 test('disabled or permission-denied configuration sends no network request', async () => {
@@ -336,20 +337,24 @@ test('stable task schema keeps exact legal discards and opponent seats in dynami
   s.phase = 'ended'; assert.deepEqual(prepareState().data.outputConstraints.legalDiscards, []);
 });
 
-test('worker uses separate task prompts, previews actual data and rejects malformed model recommendations', async () => {
+test('worker uses separate task prompts, authorized baseline and local preview while rejecting malformed results', async () => {
   for (const task of ['danger', 'efficiency', 'combined']) {
     const value = { task, danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['数据不足。'] }, limitations: ['请补充完整手牌。'] };
     const w = worker({ body: { choices: [{ message: { content: '```json\n' + JSON.stringify(value) + '\n```' } }] } });
     assert.equal((await w.analyze(task)).ok, true);
     const body = JSON.parse(w.requests[0].options.body);
-    const data = JSON.parse(body.messages[1].content.split('\n')[1]);
+    const baseline = JSON.parse(body.messages[1].content.split('\n')[1]);
+    const data = JSON.parse(body.messages.at(-1).content.split('\n')[1]);
     assert.equal(data.task, task); assert.equal('response_format' in body, false);
-    assert.equal('danger' in data.localAnalysis, task !== 'efficiency');
-    assert.equal('efficiency' in data.localAnalysis, task !== 'danger');
-    if (task === 'efficiency') assert.equal(JSON.stringify(data).includes('tsumogiri'), false);
+    assert.equal(data.localAnalysis, undefined); assert.equal(baseline.snapshot.format, 'mj-analysis-v1');
+    assert.equal(body.tools.length, 6);
     if (task === 'combined') { assert.match(body.messages[0].content, /任务：防守风险分析/); assert.match(body.messages[0].content, /任务：牌效率分析/); }
     const preview = await w.call({ type: 'model:prepare', task, snapshot: C.snapshot(state('live'), { game: true, hand: true, rivers: 'all' }) });
-    assert.deepEqual(preview.data, data); assert.equal(w.requests.length, 1);
+    assert.equal(preview.data.task, task); assert.deepEqual(preview.data.outputConstraints, data.outputConstraints);
+    assert.equal('danger' in preview.data.localAnalysis, task !== 'efficiency');
+    assert.equal('efficiency' in preview.data.localAnalysis, task !== 'danger');
+    if (task === 'efficiency') assert.equal(JSON.stringify(preview.data).includes('tsumogiri'), false);
+    assert.equal(w.requests.length, 1);
   }
   const w = worker({ body: { choices: [{ message: { content: JSON.stringify(answer()) } }] } });
   const bad = await w.analyze(); assert.equal(bad.ok, false); assert.match(bad.error, /结构化/);

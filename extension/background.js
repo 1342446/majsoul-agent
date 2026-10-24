@@ -121,19 +121,20 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       const lane = message.lane === 'live' ? 'live' : 'manual-review';
       const question = message.question === undefined ? '' : message.question;
       if (typeof question !== 'string' || question.length > 4000) throw new Error('追问内容无效或过长。');
-      const contextMode = c.contextMode === 'round' ? 'round' : 'snapshot';
+      const contextMode = 'round';
       let session = null, sessionContext = null;
-      if (contextMode === 'round') {
+      {
         const info = message.context || {}, identity = info.identity || {};
         const revision = await configRevision(); checkCancelled();
         session = await roundContexts.observe({ snapshot: message.snapshot, scope: String(key),
           identity: { matchId: typeof identity.matchId === 'string' ? `${key}:${identity.matchId.slice(0, 160)}` : null,
             roundStartId: identity.roundStartId, viewId: identity.viewId },
-          position: info.position, events: info.events, lane, provider: url.href, model: c.model, task,
-          config: { revision, mode: contextMode, promptVersion: 1, maxTokens: c.maxTokens, selection: c.toolCalling === true } });
+          position: info.position, events: info.events, eventWindowStart: info.eventWindowStart, historyComplete: info.historyComplete,
+          lane, provider: url.href, model: c.model, task,
+          config: { revision, mode: contextMode, promptVersion: 2, maxTokens: c.maxTokens, selection: true } });
         checkCancelled(); sessionContext = await roundContexts.getContext(session);
       }
-      const records = [], started = Date.now(), epoch = runStore.epoch(), runId = newRevision(); let status = 'failed', attempts = 0, outcome;
+      const records = [], started = Date.now(), epoch = runStore.epoch(), runId = newRevision(); let status = 'failed', attempts = 0, outcome, sessionTurn;
       const totals = () => {
         const summary = MJModelUsage.summarize(records);
         const usage = summary.requests ? summary.usage : MJModelUsage.normalizeUsage(null);
@@ -141,8 +142,8 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       };
       try {
         const analysis = await MJAgent.run({ snapshot: message.snapshot, task, signal: controller.signal,
-          runtime: MJPiRuntime, sessionContext, question, toolCalling: c.toolCalling === true,
-          maxTurns: c.toolCalling === true && lane === 'manual-review' ? 3 : 1,
+          runtime: MJPiRuntime, sessionContext, question, toolCalling: true,
+          maxTurns: lane === 'manual-review' ? 3 : 2,
           timeoutMs: outputOptions.thinking?.type === 'enabled' ? 120000 : 25000,
           transport: async request => {
             checkCancelled(); attempts++;
@@ -169,7 +170,9 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
           if (!await roundContexts.isCurrent(session)) throw new Error('分析上下文已变化，请重新分析。');
         }
         checkCancelled(); status = 'completed'; accounting = totals();
-        outcome = { ok: true, ...analysis, model: c.model, ...accounting, ...(session ? { session } : {}) };
+        const { sessionTurn: internalTurn, ...publicAnalysis } = analysis;
+        sessionTurn = internalTurn;
+        outcome = { ok: true, ...publicAnalysis, model: c.model, ...accounting, ...(session ? { session } : {}) };
       } finally {
         accounting = totals();
         if (controller.signal.aborted) status = 'cancelled';
@@ -177,12 +180,16 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
         if (controller.signal.aborted && status !== 'cancelled') await runStore.append({ id: runId, ...accounting, status: 'cancelled', mode: contextMode, lane }, epoch).catch(() => {});
         checkCancelled();
       }
-      if (session && lane === 'manual-review') {
+      if (session) {
         const exchangeId = `${started}-${newRevision()}`;
         try {
-          const committed = await roundContexts.appendExchange(session, { id: exchangeId, question: question || '分析当时局面', answer: JSON.stringify(outcome.result) }, { signal: controller.signal });
+          const committed = await roundContexts.appendExchange(session, { id: exchangeId, question: question || '分析当时局面',
+            answer: sessionTurn?.answer || JSON.stringify(outcome.result), ...(sessionTurn?.request ? { request: sessionTurn.request } : {}) }, { signal: controller.signal });
           checkCancelled();
-          if (!committed) throw new Error('分析上下文已变化，请重新分析。');
+          if (!committed) {
+            if (!await roundContexts.isCurrent(session)) throw new Error('分析上下文已变化，请重新分析。');
+            checkCancelled(); outcome.sessionSaved = false;
+          }
         } catch (error) {
           await roundContexts.removeExchange(session, exchangeId).catch(() => {});
           await runStore.append({ id: runId, ...accounting, status: controller.signal.aborted ? 'cancelled' : 'failed', mode: contextMode, lane }, epoch).catch(() => {});

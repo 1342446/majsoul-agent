@@ -1,5 +1,13 @@
 # 版本验证记录
 
+## 当前源码：小局增量上下文（2026-10-24，未发布）
+
+- 模型分析统一为 round 与六个默认只读工具，旧 snapshot／工具关闭配置不再改变新请求流程。实时最多2次、手动最多3次模型调用，工具最多4次；mjai 与独立获取器边界保持独立。
+- 使用真实 Pi 浏览器 bundle 和模拟 transport 验证：各 lane 的初始基线只发送一次，后续两次观察只追加新事件与 RFC 6902 授权局面变化，先前 user／assistant 消息作为精确前缀保留；中盘首次快照不冒充开局。覆盖可信事件窗口、牌谱零基 recordIndex 与游标条数转换、未知对手摸牌、实时／手动隔离与旧历史重建。
+- 取消、clear、配置变更与最终问答保存竞争均不污染成功问答；失败、非法输出与预算耗尽不写问答。缺失或部分失败的 usage 保持未知，数值导出与凭据隔离安全检查继续保留。
+- 最终代码 `npm test` 349/349 通过，无跳过；`npm run check`、`npm run build`、`git diff --check` 通过；`npm run eval` 3/3 人工向听回归通过。日志为 `research/round-incremental-test.log`、`research/round-incremental-check.log`、`research/round-incremental-build.log`、`research/round-incremental-eval.log`（本地证据，不纳入源码）。覆盖取消补偿写入的临时失败重试、永久失败后的后续强制清理、reset 失败回滚、过大事件输入拒绝，以及未保存问答后的新基线轮换。
+- 仅人工局面与模拟模型响应，无真实游戏账号、真实模型 API、付费调用、缓存命中或费用下降验证。版本仍为0.6.0，本轮不发布新安装包。
+
 ## 0.6.0 发布验收（2026-10-24）
 
 - 完整版在实际 MV3 worker 中运行 Pi Agent 1.4.0；独立获取器依赖闭包不包含 Pi、模型会话、模型设置或模型主机权限。打包产物含完整第三方许可证和来源记录，构建禁止动态代码生成与 Node/provider 模块混入。

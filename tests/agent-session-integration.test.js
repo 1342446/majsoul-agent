@@ -65,18 +65,19 @@ function worker({ local = storage(), config = {}, responses = [] } = {}) {
   return { local, requests, call, analyze, game, options, changed };
 }
 const persisted = w => JSON.stringify({ sessions: w.local.values.agentRoundContextV1, runs: w.local.values.agentRunsV1 });
-const toolReply = (name = 'get_current_position', usage = { prompt_tokens: 100, completion_tokens: 10 }) => ({
+const toolReply = (name = 'get_self_hand', usage = { prompt_tokens: 100, completion_tokens: 10 }) => ({
   choices: [{ finish_reason: 'tool_calls', message: { content: null, tool_calls: [{ id: 'inspect-1', type: 'function', function: { name, arguments: '{}' } }] } }], usage });
 async function until(predicate) {
   for (let i = 0; i < 100; i++) { if (predicate()) return; await new Promise(resolve => setImmediate(resolve)); }
   assert.fail('Worker did not reach expected asynchronous checkpoint');
 }
 
-test('actual MV3 bundle defaults to a single compatibility call without tool declarations', async () => {
+test('actual MV3 bundle upgrades legacy settings to round and default tools', async () => {
   const w = worker({ config: { contextMode: 'snapshot' }, responses: [reply()] });
   const result = await w.analyze();
   assert.equal(result.ok, true); assert.equal(w.requests.length, 1);
-  assert.ok(!w.requests[0].body.tools?.length);
+  assert.equal(w.requests[0].body.tools.length, 6); assert.equal(result.contextMode, 'round');
+  assert.equal(result.sessionTurn, undefined);
   assert.equal(result.usage.inputTokens, 100); assert.equal(result.usage.outputTokens, 20);
   assert.ok(result.cost.totalCost > 0);
   assert.equal(result.runtime.name, 'pi'); assert.equal(result.runtime.turns, 1);
@@ -94,6 +95,53 @@ test('manual round context survives a worker restart; realtime does not replay a
   assert.match(JSON.stringify(restored.requests[0].body.messages), /FOLLOWUP_QUESTION/);
   assert.equal((await restored.analyze(2, { lane: 'live' })).ok, true);
   assert.doesNotMatch(JSON.stringify(restored.requests[1].body.messages), /PAST_ANSWER|NEXT_ANSWER/);
+});
+
+test('each lane sends one baseline and appends exact successful Pi prefixes plus current fact patches', async () => {
+  for (const lane of ['live', 'manual-review']) {
+    const w = worker({ responses: [reply('FIRST_PREFIX'), reply('SECOND_PREFIX'), reply('THIRD_PREFIX')] });
+    for (const step of [10, 17, 23]) {
+      const snapshot = position(step);
+      snapshot.rivers[0].discards = step === 10 ? [] : [{ tile: '1m', tsumogiri: false, riichi: false }];
+      const result = await w.analyze(step, { lane, snapshot, question: 'QUESTION_' + step,
+        context: { identity: { matchId: 'prefix-match', roundStartId: 'prefix-round', viewId: 'live' }, position: step,
+          eventWindowStart: 0, historyComplete: true, events: [
+            { kind: 'NewRound', source: 'live', step: 0 },
+            ...[17, 23].filter(p => p <= step).map(p => ({ kind: 'DiscardTile', source: 'live', step: p, seat: 0, tile: '1m' }))
+          ] } });
+      assert.equal(result.ok, true); assert.equal(result.sessionTurn, undefined);
+    }
+    const messages = w.requests.map(r => r.body.messages);
+    assert.deepEqual(messages[1].slice(0, messages[0].length), messages[0]);
+    assert.deepEqual(messages[2].slice(0, messages[1].length), messages[1]);
+    for (const current of messages) {
+      assert.equal(current.filter(m => m.role === 'user' && m.content.includes('初始基线')).length, 1);
+      assert.equal(current.filter(m => m.role === 'user' && m.content.includes('"format":"mj-analysis-v1"')).length, 1);
+    }
+    assert.match(JSON.stringify(messages[2]), /FIRST_PREFIX|SECOND_PREFIX/);
+    const observations = w.local.values.agentRoundContextV1.sessions[0].timeline.filter(e => e.type === 'observation');
+    assert.equal(observations.length, 2); assert.equal(observations[0].events.length, 1);
+    assert.ok(observations[0].changes.some(change => change.path === '/game/remaining'));
+    assert.ok(observations[0].changes.some(change => change.path === '/rivers/0/discards/-'));
+    assert.equal(w.local.values.agentRoundContextV1.sessions[0].baseline.origin, 'mid-round');
+  }
+});
+
+test('config reset during answer persistence rolls back successful answers without resurrecting sessions', async () => {
+  const local = storage(), w = worker({ local, responses: [reply('CONFIG_SAVE_RACE')] });
+  const original = local.set.bind(local); let held = false, release;
+  const gate = new Promise(resolve => { release = resolve; });
+  local.set = async next => {
+    if (!held && JSON.stringify(next.agentRoundContextV1 || {}).includes('CONFIG_SAVE_RACE')) { held = true; await gate; }
+    await original(next);
+  };
+  const pending = w.analyze(); await until(() => held);
+  const config = { ...local.values.modelConfig, model: 'changed-model' }; local.values.modelConfig = config;
+  const reset = Promise.all(w.changed.map(listener => listener({ modelConfig: { newValue: config } }, 'local')));
+  release(); await reset;
+  assert.equal((await pending).ok, false);
+  assert.equal(local.values.agentRoundContextV1.sessions.length, 0);
+  assert.doesNotMatch(persisted(w), /CONFIG_SAVE_RACE/);
 });
 
 test('replay rewind and authorization changes do not send future or unselected information', async () => {
@@ -115,39 +163,49 @@ test('manual tools execute through the actual Pi bundle with two calls and aggre
   assert.equal(result.ok, true); assert.equal(w.requests.length, 2);
   assert.equal(result.runtime.turns, 2); assert.equal(result.runtime.toolCalls, 1);
   assert.equal(result.usage.inputTokens, 300); assert.equal(result.usage.outputTokens, 40);
-  assert.ok(w.requests[0].body.tools.some(tool => tool.function.name === 'get_current_position'));
+  assert.ok(w.requests[0].body.tools.some(tool => tool.function.name === 'get_self_hand'));
   const messages = w.requests[1].body.messages;
   assert.ok(messages.some(message => message.role === 'assistant' && message.tool_calls?.[0].id === 'inspect-1'));
   const tool = messages.find(message => message.role === 'tool');
-  assert.equal(tool.tool_call_id, 'inspect-1'); assert.match(tool.content, /mj-analysis-v1/);
+  assert.equal(tool.tool_call_id, 'inspect-1'); assert.match(tool.content, /1m/);
   assert.doesNotMatch(JSON.stringify(messages), /OPPONENT_SECRET|API_SECRET|7z/);
   assert.equal(w.local.values.agentRunsV1.at(-1).calls, 2);
 });
 
 test('round-history tool on a replay branch excludes future checkpoints and unauthorized events', async () => {
-  const w = worker({ config: { toolCalling: true }, responses: [reply('FUTURE_TOOL_ANSWER'), toolReply('get_round_history'), reply()] });
+  const w = worker({ config: { toolCalling: true }, responses: [reply('FUTURE_TOOL_ANSWER'), toolReply('get_round_events'), reply()] });
   const analyze = (step, events) => w.analyze(step, { snapshot: { ...position(step), source: 'replay', lastStep: null },
     context: { identity: { matchId: 'replay-1', roundStartId: 'round-1', viewId: 'review' }, position: step, events } });
-  assert.equal((await analyze(8, [{ kind: 'DiscardTile', source: 'replay', recordIndex: 8, seat: 0, tile: '8s' }])).ok, true);
+  assert.equal((await analyze(8, [{ kind: 'DiscardTile', source: 'replay', recordIndex: 7, seat: 0, tile: '8s' }])).ok, true);
   assert.equal((await analyze(2, [
-    { kind: 'DiscardTile', source: 'replay', recordIndex: 2, seat: 0, tile: '2m' },
-    { kind: 'DiscardTile', source: 'replay', recordIndex: 2, seat: 1, tile: '9m' },
-    { kind: 'DealTile', source: 'replay', recordIndex: 2, seat: 1, tile: '7z' }
+    { kind: 'DiscardTile', source: 'replay', recordIndex: 1, seat: 0, tile: '2m' },
+    { kind: 'DiscardTile', source: 'replay', recordIndex: 1, seat: 1, tile: '9m' },
+    { kind: 'DealTile', source: 'replay', recordIndex: 1, seat: 1, tile: '7z' }
   ])).ok, true);
   const sent = JSON.stringify(w.requests[2].body.messages);
   assert.doesNotMatch(sent, /FUTURE_TOOL_ANSWER|OPPONENT_SECRET|API_SECRET|8s|9m|7z/);
   const tool = w.requests[2].body.messages.find(message => message.role === 'tool');
   const history = JSON.parse(tool.content);
-  assert.equal(history.checkpoints.length, 1); assert.equal(history.checkpoints[0].position, 2);
+  assert.equal(history.position, 2); assert.equal(history.checkpoints, undefined);
   assert.ok(history.events.some(event => event.tile === '2m'));
 });
 
-test('realtime tool setting retains one-call budget, and default APIs receive no tools', async () => {
-  for (const [config, lane] of [[{ toolCalling: true }, 'live'], [{ toolCalling: false }, 'manual-review']]) {
-    const w = worker({ config, responses: [toolReply()] });
+test('realtime tools allow two calls and legacy tool-off settings still enable tools', async () => {
+  const live = worker({ config: { toolCalling: true }, responses: [toolReply(), reply('LIVE_TOOL_ANSWER')] });
+  const answer = await live.analyze(1, { lane: 'live' });
+  assert.equal(answer.ok, true); assert.equal(live.requests.length, 2);
+  assert.equal(answer.runtime.toolCalls, 1); assert.ok(live.requests[0].body.tools.length);
+  assert.ok(!live.requests[1].body.tools?.length); assert.equal(answer.sessionTurn, undefined);
+  assert.match(persisted(live), /LIVE_TOOL_ANSWER/);
+  const bounded = worker({ config: { toolCalling: true }, responses: [toolReply(), toolReply()] });
+  assert.equal((await bounded.analyze(1, { lane: 'live' })).ok, false);
+  assert.equal(bounded.requests.length, 2); assert.ok(!bounded.requests[1].body.tools?.length);
+  assert.doesNotMatch(persisted(bounded), /LIVE_TOOL_ANSWER/);
+  for (const [config, lane] of [[{ toolCalling: false }, 'manual-review'], [{ toolCalling: false }, 'live']]) {
+    const w = worker({ config, responses: [toolReply(), reply()] });
     const result = await w.analyze(1, { lane });
-    assert.equal(result.ok, false); assert.equal(w.requests.length, 1);
-    assert.ok(!w.requests[0].body.tools?.length);
+    assert.equal(result.ok, true); assert.equal(w.requests.length, 2);
+    assert.equal(w.requests[0].body.tools.length, 6);
     assert.doesNotMatch(JSON.stringify(result.trace || {}), /API_SECRET|OPPONENT_SECRET|mj-analysis-v1/);
   }
 });
@@ -171,7 +229,7 @@ test('malformed and HTTP failure runs retain known usage without entering conver
 
 test('unknown usage on a failed later tool turn does not become a known partial total', async () => {
   const w = worker({ config: { toolCalling: true }, responses: [
-    toolReply('get_current_position', { prompt_tokens: 100, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 0 } }),
+    toolReply('get_self_hand', { prompt_tokens: 100, completion_tokens: 10, prompt_tokens_details: { cached_tokens: 0 } }),
     new Response('{}', { status: 503 })
   ] });
   const result = await w.analyze();
@@ -300,7 +358,7 @@ test('configuration changes cancel pending analysis and clear sessions while pre
   assert.equal((await w.analyze(3)).ok, true);
   const exported = await w.call({ type: 'agent:usage' }, w.options);
   assert.ok(exported.records.some(record => record.mode === 'round' && record.status === 'completed'));
-  assert.ok(exported.records.some(record => record.mode === 'snapshot' && record.status === 'completed'));
+  assert.ok(exported.records.filter(record => record.mode === 'round' && record.status === 'completed').length >= 2);
   assert.doesNotMatch(JSON.stringify(exported), /PRIOR_ROUND_ANSWER|SNAPSHOT_ANSWER|NEW_CONFIG_SECRET|API_SECRET/);
   assert.doesNotMatch(JSON.stringify(w.requests[2].body.messages), /PRIOR_ROUND_ANSWER/);
 });

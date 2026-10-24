@@ -23,3 +23,7 @@
 预算字段：`maxTurns`（默认 6，上限 20）、`maxToolCalls`（12 / 60）、`maxTokens`（16000 / 200000）、`timeoutMs`（60000 / 300000）。模型请求和工具收到同一个 AbortSignal；忽略取消的 Promise 也不会阻塞 run 返回。最后一个模型请求含 `finalTurn:true` 且 `tools:[]`，宿主应要求模型直接输出最终答案；若模型仍请求工具，模块以 `TURN_BUDGET` 终止且不执行工具。token 预算依赖 transport 提供准确 usage；返回超预算结果会在工具执行前拒绝，无法撤销模型服务端已经使用的 token。
 
 collector profile 不应导入或打包 `pi-runtime.js`；仅 Agent worker 可加载该产物。
+
+## 小局集成
+
+当前未发布源码使用 promptVersion 2 的 baseline + timeline，并将内部 sessionTurn 在后台保存后剥离。按原始顺序追加 Pi 消息，工具中间消息仅保留在一次运行中；本地会话仍通过无状态 Chat Completions 重传。六个工具默认开启，实时最多2次、手动最多3次模型调用，每次最多4次工具调用。完整的隔离、覆盖缺口、预算轮换和缓存边界见 [AGENT_SESSIONS.md](AGENT_SESSIONS.md)。

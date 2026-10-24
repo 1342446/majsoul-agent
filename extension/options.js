@@ -19,10 +19,10 @@ function pricingFields() {
     ...Object.fromEntries(Object.entries(priceFields).map(([key, id]) => [key, $(id).value.trim() === '' ? null : Number($(id).value)])) };
 }
 function chatFields(c) { return { thinking: c.thinking === true, maxTokens: c.maxTokens,
-  contextMode: c.contextMode === 'round' ? 'round' : 'snapshot', toolCalling: c.toolCalling === true, pricing: c.pricing }; }
+  contextMode: 'round', toolCalling: true, pricing: c.pricing }; }
 function fields(provider) { return { provider, enabled: $('enabled').checked, endpoint: $('endpoint').value.trim(), model: provider === 'mjai' ? 'mjai' : $('model').value.trim(), apiKey: $('key').value.trim(),
   ...(provider === 'chat' ? { thinking: !$('thinking').disabled && $('thinking').checked, maxTokens: Number($('maxTokens').value),
-    contextMode: $('contextMode').value === 'round' ? 'round' : 'snapshot', toolCalling: $('toolCalling').checked, pricing: pricingFields() } : {}) }; }
+    contextMode: 'round', toolCalling: true, pricing: pricingFields() } : {}) }; }
 function updateThinking() {
   const supported = currentProvider === 'chat' && MJModelEndpoint.supportsThinking($('endpoint').value.trim(), $('model').value.trim());
   $('thinking').disabled = !supported;
@@ -36,11 +36,9 @@ function show(provider) {
   $('endpointHint').textContent = engine ? '仅支持 localhost / 127.0.0.1 的 HTTP /analyze 接口。' : '自动补全 /chat/completions，也可填写完整接口地址。';
   $('model').value = engine ? 'mjai' : c.model || ''; $('model').readOnly = engine;
   $('chatOptions').hidden = engine; $('maxTokens').disabled = engine;
-  for (const id of ['contextMode', 'toolCalling', 'priceCurrency', ...Object.values(priceFields)]) $(id).disabled = engine;
+  for (const id of ['priceCurrency', ...Object.values(priceFields)]) $(id).disabled = engine;
   $('thinking').checked = c.thinking === true;
   $('maxTokens').value = Number.isInteger(c.maxTokens) && c.maxTokens >= 1 && c.maxTokens <= 393216 ? c.maxTokens : MJModelEndpoint.defaultMaxTokens(c.thinking === true);
-  $('contextMode').value = c.contextMode === 'round' ? 'round' : 'snapshot';
-  $('toolCalling').checked = c.toolCalling === true;
   $('priceCurrency').value = typeof c.pricing?.currency === 'string' ? c.pricing.currency : '';
   for (const [key, id] of Object.entries(priceFields)) $(id).value = typeof c.pricing?.[key] === 'number' ? String(c.pricing[key]) : '';
   updateThinking();

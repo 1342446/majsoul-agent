@@ -73,7 +73,7 @@ test('DeepSeek tool reasoning is replayed within one run and excluded from final
       const turn = requests.length;
       const data = { usage: { prompt_tokens: 10, completion_tokens: 20 }, choices: [{ finish_reason: turn < 3 ? 'tool_calls' : 'stop', message: {
         content: turn < 3 ? null : answer, reasoning_content: `${sentinel}_${turn}`,
-        ...(turn < 3 ? { tool_calls: [{ id: `call-${turn}`, type: 'function', function: { name: 'get_current_position', arguments: '{}' } }] } : {})
+        ...(turn < 3 ? { tool_calls: [{ id: `call-${turn}`, type: 'function', function: { name: 'get_self_hand', arguments: '{}' } }] } : {})
       } }] };
       usage.push(U.normalizeUsage(data));
       return T.result(data, request.tools.length > 0);

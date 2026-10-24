@@ -8,7 +8,7 @@ const ChatEndpoint = require('../extension/adapters/model-endpoint.js');
 
 async function settings(initial = {}, { permission = true, beforeSet, clearResult = { ok: true }, usageResult } = {}) {
   const data = structuredClone(initial), calls = [], elements = new Map(), downloads = [];
-  for (const id of ['status', 'provider', 'providerHint', 'enabled', 'endpoint', 'endpointHint', 'model', 'key', 'keyLabel', 'chatOptions', 'thinking', 'thinkingHint', 'maxTokens', 'contextMode', 'toolCalling', 'priceCurrency', 'priceInput', 'priceOutput', 'priceCacheRead', 'priceCacheWrite', 'config', 'disable', 'clear', 'clearAgentData', 'exportUsage']) elements.set(id, { value: '', checked: false, textContent: '' });
+  for (const id of ['status', 'provider', 'providerHint', 'enabled', 'endpoint', 'endpointHint', 'model', 'key', 'keyLabel', 'chatOptions', 'thinking', 'thinkingHint', 'maxTokens', 'priceCurrency', 'priceInput', 'priceOutput', 'priceCacheRead', 'priceCacheWrite', 'config', 'disable', 'clear', 'clearAgentData', 'exportUsage']) elements.set(id, { value: '', checked: false, textContent: '' });
   const local = {
     get: async keys => { calls.push(['get']); return Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(key => key in data).map(key => [key, structuredClone(data[key])])); },
     set: async value => { const copied = structuredClone(value); calls.push(['set']); if (beforeSet) await beforeSet(copied); Object.assign(data, copied); },
@@ -177,32 +177,29 @@ test('disable and clear serialize after an already-started save storage write', 
   }
 });
 
-test('chat context and tools default off and optional pricing remains unknown until supplied', async () => {
-  const page = await settings(savedChat());
-  assert.equal(page.el('contextMode').value, 'snapshot'); assert.equal(page.el('toolCalling').checked, false);
+test('chat always saves round and enabled tools while optional prices remain unknown', async () => {
+  const previous = savedChat(); Object.assign(previous.modelConfig, { contextMode: 'snapshot', toolCalling: false });
+  const page = await settings(previous);
   assert.equal(page.el('priceCurrency').value, ''); assert.equal(page.el('priceInput').value, '');
   await page.submit();
-  assert.equal(page.data.modelConfig.contextMode, 'snapshot'); assert.equal(page.data.modelConfig.toolCalling, false);
+  assert.equal(page.data.modelConfig.contextMode, 'round'); assert.equal(page.data.modelConfig.toolCalling, true);
   assert.deepEqual(page.data.modelConfig.pricing, { currency: null, input: null, output: null, cacheRead: null, cacheWrite: null });
 });
 
 test('chat context, tools and prices survive provider drafts, save and reload while mjai stays unchanged', async () => {
   const page = await settings(savedChat());
-  page.el('contextMode').value = 'round'; page.el('toolCalling').checked = true;
   page.el('priceCurrency').value = ' CNY '; page.el('priceInput').value = '2'; page.el('priceOutput').value = '8.5';
   page.el('priceCacheRead').value = '0';
   page.select('mjai');
-  assert.equal(page.el('priceInput').disabled, true); assert.equal(page.el('toolCalling').disabled, true);
+  assert.equal(page.el('priceInput').disabled, true);
   page.el('key').value = 'ENGINE'; await page.submit();
   assert.deepEqual(page.data.modelConfig, { provider: 'mjai', enabled: false, endpoint: 'http://127.0.0.1:17341/analyze', model: 'mjai', apiKey: 'ENGINE' });
   const page2 = await settings(page.data); page2.select('chat');
-  assert.equal(page2.el('contextMode').value, 'round'); assert.equal(page2.el('toolCalling').checked, true);
   assert.equal(page2.el('priceInput').disabled, false); assert.equal(page2.el('priceInput').value, '2');
   await page2.submit();
   assert.deepEqual(page2.data.modelConfig.pricing, { currency: 'CNY', input: 2, output: 8.5, cacheRead: 0, cacheWrite: null });
   assert.deepEqual(page2.data.analysisProviders.chat.pricing, page2.data.modelConfig.pricing);
   const reloaded = await settings(page2.data);
-  assert.equal(reloaded.el('contextMode').value, 'round'); assert.equal(reloaded.el('toolCalling').checked, true);
   assert.equal(reloaded.el('priceOutput').value, '8.5'); assert.equal(reloaded.el('priceCacheWrite').value, '');
 });
 

@@ -14,6 +14,8 @@
 
 本版新增 Pi、小局会话、四个只读工具、追问与用量观测。默认单次快照、工具关闭；兼容接口的工具支持需单独确认，真实会话、缓存命中与费用节省仍待验证。自动测试不代表真实模型质量或实战牌力已验证。
 
+**当前源码更新（尚未发布）**：模型分析统一使用本局连续会话与六个默认开启的只读工具，接口需支持 tools；live 最多2次、manual 最多3次模型请求，各最多4次工具调用。一次当前基线后追加事件、授权局面 JSON Patch 与成功问答；中途开启和覆盖缺口不补造历史。发布下载仍为0.6.0，安装旧包不获得这些更新。
+
 项目统一维护于[oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent)，保留经过敏感内容清理的完整原私有开发历史，详见[历史迁移说明](docs/HISTORY.md)。
 
 ![自由悬浮分析卡，使用人工局面与模型响应](docs/images/agent-floating-preview.png)
@@ -58,7 +60,7 @@
 
 获取器的controller负责局面、游标、历史和导出，UI通过视图和命令与它交互。独立adapter把用户选择映射为`mj-analysis-v1`标准DTO，Agent直接依赖纯数据合同，不读取获取器state布局。其他采集器可提供相同DTO；分析面板只接收快照函数和展示信息。组合入口负责连接各组件，详见[解耦设计](docs/DECOUPLING.md)和[架构](ARCHITECTURE.md)。
 
-完整版在 worker 中运行真实上游 `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0 的轻量 Agent loop，并作 MV3 打包适配。网络仍使用已有 OpenAI-compatible transport，不代表已支持全部提供商原生 SDK。harness 保留快照校验、本地准备、模型执行、结果强校验、取消与轨迹。默认单次模型请求；开启工具后的手动复盘最多 3 次模型请求、4 次工具调用，实时分析最多 1 次模型请求，不开放多轮工具链。DeepSeek Harness 仅作设计参考，不是运行依赖。详见[小局会话与用量](docs/AGENT_SESSIONS.md)。
+完整版在 worker 中运行真实上游 `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0 的轻量 Agent loop，并作 MV3 打包适配。网络仍使用已有 OpenAI-compatible transport，不代表已支持全部提供商原生 SDK。harness 保留快照校验、本地准备、模型执行、结果强校验、取消与轨迹。接口必须支持 tools；手动复盘最多 3 次、实时分析最多 2 次模型请求，均最多 4 次工具调用。DeepSeek Harness 仅作设计参考，不是运行依赖。详见[小局会话与用量](docs/AGENT_SESSIONS.md)。
 
 获取器导出的 `mj-observer-v1` JSON可在Node.js 22.19+中进行本地复盘：
 
@@ -71,7 +73,7 @@ npm run eval
 
 ## 接入大模型
 
-`snapshot` 默认不持久保存对话；`round` 在同一小局内保留有界历史。规则与静态 schema 前置，但 Chat Completions 仍重传历史；减少网络字节、服务端缓存命中和减少计费是不同的事，不承诺省钱。缺失用量或部分失败使无法确认的汇总与费用保持未知。详见[授权范围与缓存说明](docs/AGENT_SESSIONS.md)。
+`round` 首次发送当前小局基线，之后按顺序追加新事件、授权局面 JSON Patch 与成功问答；中途开启明确标记中盘，覆盖缺口改用新检查点。规则与静态 schema 前置，但 Chat Completions 仍重传历史；减少网络字节、服务端缓存命中和减少计费是不同的事，不承诺省钱。缺失用量或部分失败使无法确认的汇总与费用保持未知。详见[授权范围与缓存说明](docs/AGENT_SESSIONS.md)。
 
 完整版支持自带模型 API，无需使用项目指定的服务或账号。LLM 分析与解释仍是主要用途；默认选择 `chat` 且分析关闭。`chat` 与可选 `mjai` 各保留一份配置，保存后一次仅使用选中的一种，不同时调用两者。
 
