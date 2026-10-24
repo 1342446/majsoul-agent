@@ -81,7 +81,10 @@ test('agent composition keeps collection, floating analysis and hand hints on in
   mounted[1].onSelfSeat(0);
   assert.deepEqual(Array.from(mounted[1].selfHand), replayHand);
   mounted[1].onCursor(2); assert.equal(mounted[1].drawnTile, '2z');
+  assert.equal(mounted[1].analysisContext().position, 2);
+  assert.ok(mounted[1].analysisContext().events.some(e => e.tile === '2z'));
   mounted[1].onCursor(1); assert.equal(mounted[1].selfHand.includes('2z'), false);
+  assert.equal(mounted[1].analysisContext().events.some(e => e.tile === '2z'), false);
   mounted[1].onMode('live'); assert.equal(mounted[2].mode, 'live');
   assert.deepEqual(Array.from(mounted[1].selfHand), liveHand);
   configured.controller.receive({ type: 'event', payload: { kind: 'DealTile', source: 'live', step: 1, seat: 1, tile: '8p' } });

@@ -1,16 +1,35 @@
 'use strict';
 importScripts('contracts/snapshot.js', 'adapters/model-endpoint.js', 'adapters/engine-endpoint.js', 'adapters/mjai.js', 'mahjong-analysis.js', 'analysis.js');
 importScripts('harness.js', 'agent.js');
+importScripts('pi-runtime.js', 'round-context.js', 'model-usage.js', 'model-session-transport.js', 'agent-run-store.js');
 importScripts('contracts/engine-result.js', 'engine-agent.js');
 importScripts('history.js', 'history-storage.js');
 const pending = new Map();
+const roundContexts = MJRoundContext.createStore({ storage: chrome.storage.local });
+const runStore = MJRunStore.create({ storage: chrome.storage.local });
+let revisionPromise = null;
+const newRevision = () => globalThis.crypto?.randomUUID?.() || `${Date.now()}-${Math.random()}`;
+async function configRevision() {
+  if (!revisionPromise) revisionPromise = (async () => {
+    const saved = (await chrome.storage.local.get('agentConfigRevision')).agentConfigRevision;
+    const revision = typeof saved === 'string' ? saved : newRevision();
+    if (chrome.storage.local.set && revision !== saved) await chrome.storage.local.set({ agentConfigRevision: revision });
+    return revision;
+  })();
+  return revisionPromise;
+}
+async function clearAgentData(clearRuns = true) {
+  for (const controller of pending.values()) controller.abort();
+  const revision = newRevision(); revisionPromise = Promise.resolve(revision);
+  await Promise.all([roundContexts.reset(), clearRuns ? runStore.clear() : Promise.resolve(), chrome.storage.local.set?.({ agentConfigRevision: revision })]);
+}
 chrome.storage.local.setAccessLevel({ accessLevel: 'TRUSTED_CONTEXTS' });
 chrome.storage.onChanged.addListener((changes, area) => {
   if (area !== 'local' || !changes.modelConfig) return;
   for (const controller of pending.values()) controller.abort();
   // Content scripts cannot observe changes to TRUSTED_CONTEXTS storage.
   // Send only an invalidation signal; credentials stay in the worker.
-  return notifyModelConfigChanged();
+  return Promise.allSettled([clearAgentData(false), notifyModelConfigChanged()]);
 });
 async function notifyModelConfigChanged() {
   try {
@@ -22,6 +41,12 @@ async function notifyModelConfigChanged() {
 chrome.runtime.onMessage.addListener((message, sender, respond) => {
   if (sender.id !== chrome.runtime.id) return;
   const game = sender.tab && sender.frameId === 0 && sender.url?.startsWith('https://game.maj-soul.com/');
+  if (message?.type === 'agent:usage' && sender.url === chrome.runtime.getURL?.('options.html')) {
+    runStore.list().then(records => respond({ ok: true, records })).catch(() => respond({ ok: false, error: '读取用量记录失败。' })); return true;
+  }
+  if (message?.type === 'agent:clear-data' && !sender.tab?.url?.startsWith('https://game.maj-soul.com/') && sender.url === chrome.runtime.getURL?.('options.html')) {
+    clearAgentData().then(() => respond({ ok: true })).catch(() => respond({ ok: false, error: '清除本地记录失败，请重试。' })); return true;
+  }
   if (message?.type === 'model:settings' && game) { chrome.runtime.openOptionsPage(); respond({ ok: true }); return; }
   if (message?.type === 'model:preferences' && game) {
     const p = message.preferences || {}, preferences = {};
@@ -47,7 +72,7 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
     return true;
   }
   if (message?.type !== 'model:analyze' || !game) return;
-  let rawModelResult = null;
+  let rawModelResult = null, accounting = null;
   (async () => {
     const key = sender.tab.id;
     if (pending.has(key)) throw new Error('已有分析正在进行。');
@@ -93,49 +118,98 @@ chrome.runtime.onMessage.addListener((message, sender, respond) => {
       if (outputOptions.thinking?.type === 'enabled') {
         clearTimeout(timer); timer = setTimeout(() => controller.abort(), 120000);
       }
-      const analysis = await MJAgent.run({ snapshot: message.snapshot, task, signal: controller.signal,
-        explain: async (prepared, { signal }) => {
-          const response = await fetch(url.href, { method: 'POST', signal, credentials: 'omit', redirect: 'error',
-            headers: { 'Content-Type': 'application/json', ...(c.apiKey ? { Authorization: 'Bearer ' + c.apiKey } : {}) },
-            body: JSON.stringify({ model: c.model, stream: false, ...outputOptions, messages: [
-              { role: 'system', content: prepared.systemPrompt },
-              { role: 'user', content: prepared.userPrompt }] }) });
-          if (!response.ok) throw new Error('模型接口返回 HTTP ' + response.status + '，请检查地址、密钥、模型及额度。');
-          // Bound the response while reading, including providers that omit Content-Length.
-          const reader = response.body.getReader(); const chunks = []; let size = 0;
-          while (true) { const { done, value } = await reader.read(); if (done) break; size += value.length;
-            if (size > 1024 * 1024) { await reader.cancel(); throw new Error('模型响应过大。'); } chunks.push(value); }
-          const bytes = new Uint8Array(size); let offset = 0;
-          for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-          let data; try { data = JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('接口没有返回有效 JSON，请检查是否为 OpenAI 兼容接口。'); }
-          const choice = data?.choices?.[0], content = choice?.message?.content;
-          if (typeof content === 'string') rawModelResult = { content: content.slice(0, 32000), truncated: content.length > 32000,
-            model: c.model, capturedAt: new Date().toISOString(), finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason.slice(0, 100) : null };
-          if (choice?.finish_reason === 'length') throw new Error('模型输出达到长度上限，未完成分析。');
-          if (choice?.finish_reason === 'content_filter') throw new Error('模型输出被服务过滤，未完成分析。');
-          if (['insufficient_system_resource', 'aborted'].includes(choice?.finish_reason)) throw new Error('模型服务中断了生成，请稍后重试。');
-          if (typeof content !== 'string' || !content.trim()) {
-            if (typeof choice?.message?.reasoning_content === 'string' && choice.message.reasoning_content.trim()) throw new Error('模型仅返回思考内容，未生成最终分析。');
-            if (data?.error) throw new Error('模型接口返回错误，未提供有效分析，请检查服务状态与模型配置。');
-            throw new Error('模型响应正文为空或格式不兼容，未取得分析结果。');
-          }
-          if (content.length > 32000) throw new Error('模型分析结果过长，请重试。');
-          return content;
-        } });
-      return { ok: true, ...analysis, model: c.model };
+      const lane = message.lane === 'live' ? 'live' : 'manual-review';
+      const question = message.question === undefined ? '' : message.question;
+      if (typeof question !== 'string' || question.length > 4000) throw new Error('追问内容无效或过长。');
+      const contextMode = c.contextMode === 'round' ? 'round' : 'snapshot';
+      let session = null, sessionContext = null;
+      if (contextMode === 'round') {
+        const info = message.context || {}, identity = info.identity || {};
+        const revision = await configRevision(); checkCancelled();
+        session = await roundContexts.observe({ snapshot: message.snapshot, scope: String(key),
+          identity: { matchId: typeof identity.matchId === 'string' ? `${key}:${identity.matchId.slice(0, 160)}` : null,
+            roundStartId: identity.roundStartId, viewId: identity.viewId },
+          position: info.position, events: info.events, lane, provider: url.href, model: c.model, task,
+          config: { revision, mode: contextMode, promptVersion: 1, maxTokens: c.maxTokens, selection: c.toolCalling === true } });
+        checkCancelled(); sessionContext = await roundContexts.getContext(session);
+      }
+      const records = [], started = Date.now(), epoch = runStore.epoch(), runId = newRevision(); let status = 'failed', attempts = 0, outcome;
+      const totals = () => {
+        const summary = MJModelUsage.summarize(records);
+        const usage = summary.requests ? summary.usage : MJModelUsage.normalizeUsage(null);
+        return { usage, cost: MJModelUsage.estimateCost(usage, c.pricing), calls: attempts, elapsedMs: Date.now() - started, contextMode };
+      };
+      try {
+        const analysis = await MJAgent.run({ snapshot: message.snapshot, task, signal: controller.signal,
+          runtime: MJPiRuntime, sessionContext, question, toolCalling: c.toolCalling === true,
+          maxTurns: c.toolCalling === true && lane === 'manual-review' ? 3 : 1,
+          timeoutMs: outputOptions.thinking?.type === 'enabled' ? 120000 : 25000,
+          transport: async request => {
+            checkCancelled(); attempts++;
+            // A failed or unreadable attempt may still have been billed. Its missing usage is unknown.
+            const record = { usage: MJModelUsage.normalizeUsage(null) }; records.push(record);
+            const response = await fetch(url.href, { method: 'POST', signal: request.signal, credentials: 'omit', redirect: 'error',
+              headers: { 'Content-Type': 'application/json', ...(c.apiKey ? { Authorization: 'Bearer ' + c.apiKey } : {}) },
+              body: JSON.stringify(MJModelSessionTransport.body(request, c, outputOptions)) });
+            if (!response.ok) throw new Error('模型接口返回 HTTP ' + response.status + '，请检查地址、密钥、模型及额度。');
+            const data = await readJson(response, '模型');
+            const usage = MJModelUsage.normalizeUsage(data);
+            record.usage = usage;
+            checkCancelled();
+            const choice = data?.choices?.[0], content = choice?.message?.content;
+            if (typeof content === 'string') rawModelResult = { content: content.slice(0, 32000), truncated: content.length > 32000,
+              model: c.model, capturedAt: new Date().toISOString(), finishReason: typeof choice?.finish_reason === 'string' ? choice.finish_reason.slice(0, 100) : null };
+            const result = MJModelSessionTransport.result(data, request.tools.length > 0);
+            return { ...result, usage: { input: usage.uncachedInputTokens ?? usage.inputTokens ?? 0, output: usage.outputTokens ?? 0,
+              cacheRead: usage.uncachedInputTokens === null ? 0 : usage.cacheReadTokens ?? 0, cacheWrite: usage.cacheWriteTokens ?? 0,
+              totalTokens: (usage.inputTokens || 0) + (usage.outputTokens || 0) } };
+          } });
+        checkCancelled();
+        if (session) {
+          if (!await roundContexts.isCurrent(session)) throw new Error('分析上下文已变化，请重新分析。');
+        }
+        checkCancelled(); status = 'completed'; accounting = totals();
+        outcome = { ok: true, ...analysis, model: c.model, ...accounting, ...(session ? { session } : {}) };
+      } finally {
+        accounting = totals();
+        if (controller.signal.aborted) status = 'cancelled';
+        await runStore.append({ id: runId, ...accounting, status, mode: contextMode, lane }, epoch).catch(() => {});
+        if (controller.signal.aborted && status !== 'cancelled') await runStore.append({ id: runId, ...accounting, status: 'cancelled', mode: contextMode, lane }, epoch).catch(() => {});
+        checkCancelled();
+      }
+      if (session && lane === 'manual-review') {
+        const exchangeId = `${started}-${newRevision()}`;
+        try {
+          const committed = await roundContexts.appendExchange(session, { id: exchangeId, question: question || '分析当时局面', answer: JSON.stringify(outcome.result) }, { signal: controller.signal });
+          checkCancelled();
+          if (!committed) throw new Error('分析上下文已变化，请重新分析。');
+        } catch (error) {
+          await roundContexts.removeExchange(session, exchangeId).catch(() => {});
+          await runStore.append({ id: runId, ...accounting, status: controller.signal.aborted ? 'cancelled' : 'failed', mode: contextMode, lane }, epoch).catch(() => {});
+          throw error;
+        }
+      }
+      return outcome;
     } finally { clearTimeout(timer); if (pending.get(key) === controller) pending.delete(key); }
-  })().then(respond).catch(error => respond({ ok: false, error: error.name === 'AbortError' ? '分析已取消或请求超时，请重试。' : (error.name === 'TypeError' ? '无法连接模型接口，请检查地址、网络与访问权限。' : error.message), ...(error.validation ? { validation: error.validation } : {}), ...(rawModelResult && error.name !== 'AbortError' ? { rawModelResult } : {}) }));
+  })().then(respond).catch(error => respond({ ok: false, error: modelError(error), ...(error.validation ? { validation: error.validation } : {}), ...(accounting || {}), ...(rawModelResult && error.name !== 'AbortError' ? { rawModelResult } : {}) }));
   return true;
 });
 
-async function readJson(response) {
+function modelError(error) {
+  if (error.name === 'AbortError' || ['ABORTED', 'TIME_BUDGET'].includes(error.code)) return '分析已取消或请求超时，请重试。';
+  if (error.name === 'TypeError') return '无法连接模型接口，请检查地址、网络与访问权限。';
+  const budget = { TURN_BUDGET: '已达到本次模型调用上限，未取得最终分析。', TOOL_BUDGET: '已达到本次工具调用上限，未取得最终分析。', TOKEN_BUDGET: '已达到本次 token 预算，未取得最终分析。' };
+  return budget[error.code] || error.message;
+}
+
+async function readJson(response, label = '引擎') {
   const reader = response.body.getReader(); const chunks = []; let size = 0;
   while (true) {
     const { done, value } = await reader.read(); if (done) break; size += value.length;
-    if (size > 1024 * 1024) { await reader.cancel(); throw new Error('引擎响应过大。'); }
+    if (size > 1024 * 1024) { await reader.cancel(); throw new Error(label + '响应过大。'); }
     chunks.push(value);
   }
   const bytes = new Uint8Array(size); let offset = 0;
   for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.length; }
-  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error('本地引擎未返回有效 JSON。'); }
+  try { return JSON.parse(new TextDecoder().decode(bytes)); } catch (_) { throw new Error(label + '未返回有效 JSON。'); }
 }

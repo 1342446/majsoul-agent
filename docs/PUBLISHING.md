@@ -10,9 +10,10 @@ Majsoul AI Analysis & Review Agent的源码可用于生成完整版和仅获取�
 
 ## 检查与打包
 
-Node.js 22+可检查、测试、生成安装目录和运行人工回归。ZIP打包需Python 3.10+，只使用标准库。
+Node.js 22.19+可检查、测试、生成安装目录和运行人工回归。首次使用或锁文件更新后先执行 `npm ci`；源码包包含 `package-lock.json`、已生成的 Pi bundle 和完整第三方许可证。ZIP打包需Python 3.10+，打包脚本本身只使用标准库。
 
 ```sh
+npm ci
 npm run check
 npm test
 npm run build
@@ -22,12 +23,14 @@ python scripts/package-public.py
 
 打包器会先运行对应源码的检查和测试，再按明确白名单生成：
 
-- `dist/majsoul-ai-analysis-and-review-agent-source-0.4.0.zip`：以`majsoul-ai-analysis-and-review-agent/`为根的源码，含三语介绍、Agent、harness、获取器、测试和CI。
-- `dist/majsoul-ai-analysis-and-review-agent-0.4.0.zip`：完整版，解压后直接含`manifest.json`。
-- `dist/majsoul-collector-0.4.0.zip`：仅获取器，不含模型代码、设置页或模型主机权限。
-- `dist/SHA256SUMS-0.4.0.txt`：以上文件的SHA-256。
+- `dist/majsoul-ai-analysis-and-review-agent-source-<version>.zip`：以`majsoul-ai-analysis-and-review-agent/`为根的源码，含三语介绍、Agent、harness、获取器、测试和CI。
+- `dist/majsoul-ai-analysis-and-review-agent-<version>.zip`：完整版，解压后直接含`manifest.json`。
+- `dist/majsoul-collector-<version>.zip`：仅获取器，不含模型代码、设置页或模型主机权限。
+- `dist/SHA256SUMS-<version>.txt`：以上文件的SHA-256，版本以源码中的 manifest 与 package 为准。
 
 `npm run build`单独生成两个可加载目录，不压缩。再次生成时会将旧目录改名为`.previous-时间戳`，不会递归删除已有目录；不再使用的旧目录可由维护者清理。不要同时在游戏中启用两种安装配置。
+
+`--base-ref` 隔离快照从同一提交提取运行代码、构建脚本、npm 配置与锁文件，避免把当前 Pi 依赖混入旧版本。旧提交没有 npm 依赖时可生成空锁文件；有依赖却未提交锁文件时拒绝打包。快照的版本号同时更新 manifest、profile 和锁文件；文档及原创牌面仍来自当前准备目录。有依赖的临时快照先在自己的目录执行 `npm ci --ignore-scripts --no-audit --no-fund`，需要 npm 与依赖下载能力；安装失败会停止验证，无依赖的旧快照不安装。
 
 白名单排除`.git`、`research/`、旧安装包、HAR、日志与浏览器配置，并扫描部分常见凭据格式。它不能替代人工审查。完整源码中的截图是离线模拟，牌面为37张原创SVG，不打包早期游戏截图。
 

@@ -24,7 +24,7 @@ function panel(options = {}) {
     }, onMessage: { addListener: fn => { configChanged = fn; }, removeListener: fn => { if (configChanged === fn) configChanged = null; } } } } };
   if (options.offline) delete context.chrome;
   vm.runInNewContext(fs.readFileSync(require.resolve('../extension/analysis-panel.js'), 'utf8'), context);
-  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], recordCount: options.recordCount || 0,
+  const render = () => context.MJAnalysisPanel.mount(container, { snapshot: selection => C.snapshot(state, selection), analysisContext: options.analysisContext, engineRequest: options.engineRequest, seatLabels: state.players.map((_, seat) => S.seatWind(state, seat) + '家 · 座位 ' + seat), phase: state.phase, round: state.round, selfSeat: state.selfSeat, hintsReady: options.hintsReady !== false, hintsCalibrated: !!options.hintsCalibrated, selfHand: state.selfHand, drawnTile: state.drawnTiles[state.selfSeat], riichiLabels: options.riichiLabels || [], recordCount: options.recordCount || 0,
     onMode: mode => { position.mode = mode; position.cursor = mode === 'replay' ? 1 : null; render(); },
     onCursor: cursor => { position.cursor = cursor; render(); }, onSelfSeat: seat => { state.selfSeat = seat; render(); }, onRoundStart: () => roundStartCalls++,
     onCollector: () => collectorCalls++, onHistory: () => historyCalls++, onCalibrateHints: () => calibrateCalls++ }, position, render, { onHints: value => hints.push(value) });
@@ -545,5 +545,23 @@ test('retry keeps the previous global result during loading, failure and cancell
   assert.match(globalSection(p), /测试结论/); assert.doesNotMatch(globalSection(p), /新全局结论/);
   pending = p.element('model-run').onclick({ isTrusted: true }); await flush(); p.resolve(replacement); await pending;
   assert.match(globalSection(p), /新全局结论/); assert.doesNotMatch(globalSection(p), /测试结论|服务暂不可用/);
+  p.destroy();
+});
+
+test('manual followups send bounded questions and context while accounting stays in a disclosure', async () => {
+  const p = panel({ analysisContext: () => ({ identity: { matchId: 'match1', roundStartId: 'start1' }, position: 3, events: [] }) });
+  await flush();
+  p.element('model-question').oninput({ target: { value: '为什么保留两面？' } });
+  const pending = p.element('model-run').onclick({ isTrusted: true }); await flush();
+  const sent = p.messages.find(m => m.type === 'model:analyze');
+  assert.equal(sent.lane, 'manual-review'); assert.equal(sent.question, '为什么保留两面？');
+  assert.equal(sent.context.identity.matchId, 'match1'); assert.equal(sent.context.position, 3);
+  const response = modelResult();
+  Object.assign(response, { usage: { inputTokens: 100, outputTokens: 20, cacheReadTokens: null, cacheWriteTokens: 0, reasoningTokens: null },
+    cost: { currency: 'USD', totalCost: null }, calls: 1, elapsedMs: 42, contextMode: 'round' });
+  p.resolve(response); await pending;
+  assert.match(p.html(), /<details data-section="usage"><summary>用量与费用/);
+  assert.match(p.html(), /缓存读取 未知/); assert.match(p.html(), /小局上下文/);
+  assert.doesNotMatch(p.html(), /<details data-section="usage" open/);
   p.destroy();
 });

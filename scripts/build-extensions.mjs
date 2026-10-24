@@ -2,7 +2,7 @@ import { cpSync, mkdirSync, readFileSync, writeFileSync, existsSync, renameSync,
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { join, posix } from 'node:path';
 import { isDeepStrictEqual } from 'node:util';
-import { dependencies, checkBoundaries, workerImports } from './check-boundaries.mjs';
+import { dependencies, checkBoundaries, workerImports, agentOnlyModules } from './check-boundaries.mjs';
 const root = fileURLToPath(new URL('../', import.meta.url));
 const json = path => JSON.parse(readFileSync(path, 'utf8'));
 function safePath(file) {
@@ -64,7 +64,7 @@ export function checkProfiles(source = join(root, 'extension')) {
   for (const profile of profiles) {
     if (profile.manifest.version !== version) throw new Error('Profile version differs: ' + profile.name);
     profile.files = validateProfile(source, profile.manifest);
-    if (profile.name === 'collector' && profile.files.some(file => /^(?:analysis(?:-panel)?\.(?:js|css)|naga-panel\.(?:js|css)|hand-hints\.js|mahjong-analysis\.js|agent\.js|engine-agent\.js|harness\.js|adapters\/(?:model-endpoint|engine-endpoint|mjai|naga-replay)\.js|contracts\/engine-result\.js|options\.)/.test(file))) throw new Error('Collector dependency closure contains analysis/model files');
+    if (profile.name === 'collector' && profile.files.some(file => agentOnlyModules.includes(file) || /^(?:analysis(?:-panel)?\.(?:js|css)|naga-panel\.(?:js|css)|hand-hints\.js|mahjong-analysis\.js|agent\.js|engine-agent\.js|harness\.js|adapters\/(?:model-endpoint|engine-endpoint|mjai|naga-replay)\.js|contracts\/engine-result\.js|options\.)/.test(file))) throw new Error('Collector dependency closure contains analysis/model files');
   }
   return profiles;
 }
@@ -78,9 +78,14 @@ export function buildExtensions(destination = join(root, 'dist')) {
     for (const file of files) { mkdirSync(join(directory, posix.dirname(file)), { recursive: true }); cpSync(join(source, file), join(directory, file)); }
     writeFileSync(join(directory, 'manifest.json'), JSON.stringify(manifest, null, 2) + '\n');
     for (const name of ['LICENSE', 'THIRD_PARTY_NOTICES.md']) cpSync(join(root, name), join(directory, name));
+    cpSync(join(root, 'licenses'), join(directory, 'licenses'), { recursive: true });
     validateProfile(directory, manifest);
     outputs.push(directory);
   }
   return outputs;
 }
-if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) for (const path of buildExtensions(process.argv[2])) console.log(path);
+if (process.argv[1] && pathToFileURL(process.argv[1]).href === import.meta.url) {
+  const { bundlePiRuntime } = await import('./bundle-pi-runtime.mjs');
+  await bundlePiRuntime();
+  for (const path of buildExtensions(process.argv[2])) console.log(path);
+}

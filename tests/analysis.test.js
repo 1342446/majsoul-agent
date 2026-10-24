@@ -2,6 +2,7 @@ const { test } = require('node:test');
 const assert = require('node:assert/strict');
 const vm = require('node:vm');
 const fs = require('node:fs');
+const path = require('node:path');
 const A = require('../extension/analysis.js');
 const S = require('../extension/state.js');
 const C = require('../extension/collector/snapshot-adapter.js');
@@ -51,13 +52,17 @@ test('chat base URLs normalize once while preserving prefixes and ports', () => 
   }
 });
 function worker(overrides = {}) {
-  let listener, changed, requests = [], accessLevel, aborted = false, timeout, analysisPreferences;
+  let listener, changed, requests = [], accessLevel, aborted = false, nextTimer = 0;
+  const timers = new Map();
   const notifications = [], tabQueries = [];
   const config = { enabled: true, model: 'mock-model', endpoint: 'https://provider.example/v1/chat/completions', apiKey: 'test-key', ...overrides.config };
-  const context = { MJAnalysis: A, MJModelEndpoint: E, MJAgent: require('../extension/agent.js'), importScripts() {}, TextDecoder, Uint8Array, AbortController,
-    setTimeout: overrides.manualTimer ? fn => { timeout = fn; return 1; } : setTimeout,
-    clearTimeout: overrides.manualTimer ? () => {} : clearTimeout,
-    chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; }, get: async () => ({ modelConfig: config, analysisPreferences }), set: async value => { analysisPreferences = value.analysisPreferences; } }, onChanged: { addListener: fn => { changed = fn; } } },
+  const storage = { modelConfig: config };
+  const context = vm.createContext({ URL, TextEncoder, TextDecoder, Uint8Array, AbortController, DOMException, structuredClone, performance,
+    setTimeout: overrides.manualTimer ? (fn, delay) => { const id = ++nextTimer; timers.set(id, { fn, delay }); return id; } : setTimeout,
+    clearTimeout: overrides.manualTimer ? id => { timers.delete(id); } : clearTimeout,
+    chrome: { storage: { local: { setAccessLevel: value => { accessLevel = value; },
+      get: async keys => Object.fromEntries((Array.isArray(keys) ? keys : [keys]).filter(key => key in storage).map(key => [key, structuredClone(storage[key])])),
+      set: async value => { Object.assign(storage, structuredClone(value)); } }, onChanged: { addListener: fn => { changed = fn; } } },
       tabs: { query: async query => { tabQueries.push(query); return [{ id: 7 }, { id: 8 }]; },
         sendMessage: async (...args) => { notifications.push(args); if (args[0] === 8) throw new Error('Tab closed'); } },
       permissions: { contains: async () => overrides.permission !== false },
@@ -67,12 +72,17 @@ function worker(overrides = {}) {
       if (overrides.wait) return new Promise((resolve, reject) => options.signal.addEventListener('abort', () => { aborted = true; reject(new DOMException('abort', 'AbortError')); }));
       if (overrides.networkError) throw new TypeError('network');
       return new Response(overrides.raw ?? JSON.stringify(overrides.body ?? { choices: [{ message: { content: JSON.stringify({ task: 'combined', danger: [], efficiency: [], decision: { action: 'unknown', tile: null, reasons: ['数据不足，无法建议弃牌。'] }, limitations: ['测试手牌数量不完整。'] }) } }] }), { status: overrides.status || 200 });
-    } };
-  vm.runInNewContext(fs.readFileSync(require.resolve('../extension/background.js'), 'utf8'), context);
+    } });
+  context.importScripts = (...files) => files.forEach(file => vm.runInContext(fs.readFileSync(path.join(__dirname, '../extension', file), 'utf8'), context, { filename: file }));
+  vm.runInContext(fs.readFileSync(require.resolve('../extension/background.js'), 'utf8'), context);
   const sender = { id: 'extension-id', tab: { id: 7 }, frameId: 0, url: 'https://game.maj-soul.com/1/' };
-  const call = (message, from = sender) => new Promise(resolve => { if (listener(message, from, resolve) !== true) resolve(undefined); });
+  const call = (message, from = sender) => new Promise(resolve => { if (listener(message, from, value => resolve(structuredClone(value))) !== true) resolve(undefined); });
   const analyze = (task = 'both', selection = { game: true, hand: true, rivers: 'all' }) => call({ type: 'model:analyze', task, snapshot: C.snapshot(state('live'), selection) });
-  return { call, analyze, requests, notifications, tabQueries, expire: () => timeout(), changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
+  return { call, analyze, requests, notifications, tabQueries, expire: () => {
+    // Browser timers fire in deadline order, with registration order breaking ties.
+    const [id, timer] = [...timers].sort((a, b) => a[1].delay - b[1].delay)[0];
+    timers.delete(id); timer.fn();
+  }, changed: (...args) => changed(...args), sender, accessLevel, get aborted() { return aborted; } };
 }
 
 test('failed structured responses preserve original final content and identify missing fields', async () => {
@@ -302,19 +312,28 @@ test('result validation identifies the failed rule without exposing model text o
   assert.equal(w.requests.length, 1);
 });
 
-test('per-position schema reflects exact legal discards, task scopes, riichi draws and opponent seats', () => {
+test('stable task schema keeps exact legal discards and opponent seats in dynamic data', () => {
   const p = prepared(), schema = p.responseSchema.properties;
-  assert.deepEqual(schema.decision.properties.tile.enum, [...p.data.localAnalysis.efficiency.candidates.map(c => c.tile), null]);
-  assert.deepEqual(schema.danger.items.properties.opponents.items.properties.seat.enum, [0,2,3]);
+  assert.equal(schema.decision.properties.tile.enum, undefined);
+  assert.deepEqual(p.data.outputConstraints.legalDiscards, p.data.localAnalysis.efficiency.candidates.map(c => c.tile));
+  assert.equal(schema.danger.items.properties.opponents.items.properties.seat.enum, undefined);
+  assert.deepEqual(p.data.outputConstraints.opponentSeats, [0,2,3]);
   assert.equal(prepared('danger').responseSchema.properties.efficiency.maxItems, 0);
   assert.deepEqual(prepared('danger').responseSchema.properties.decision.properties.tile.enum, [null]);
   assert.equal(prepared('efficiency').responseSchema.properties.danger.maxItems, 0);
   const s = state('live'); s.selfHand = ['1m','2m','3m','4m','5m','6m','7m','8m','9m','1s','2s','3s','4z'];
   const prepareState = () => A.prepare(C.snapshot(s, { game: true, hand: true, rivers: 'all' }), 'combined');
-  assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, [null]);
+  const before = prepareState();
+  assert.deepEqual(before.data.outputConstraints.legalDiscards, []);
   s.selfHand.push('4z'); s.players[1].riichi = true; s.drawnTiles[1] = '4z';
-  assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, ['4z',null]);
-  s.phase = 'ended'; assert.deepEqual(prepareState().responseSchema.properties.decision.properties.tile.enum, [null]);
+  assert.deepEqual(prepareState().data.outputConstraints.legalDiscards, ['4z']);
+  const after = prepareState();
+  assert.deepEqual(before.responseSchema, after.responseSchema);
+  assert.equal(before.systemPrompt, after.systemPrompt);
+  assert.notEqual(before.userPrompt, after.userPrompt);
+  assert.deepEqual(JSON.parse(after.userPrompt.split('\n')[1]), after.data);
+  assert.ok(after.systemPrompt.endsWith(JSON.stringify(after.responseSchema)));
+  s.phase = 'ended'; assert.deepEqual(prepareState().data.outputConstraints.legalDiscards, []);
 });
 
 test('worker uses separate task prompts, previews actual data and rejects malformed model recommendations', async () => {

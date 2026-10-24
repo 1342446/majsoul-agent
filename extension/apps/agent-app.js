@@ -25,6 +25,19 @@
         const calibration = hints.getCalibrationState();
         const analysisView = {
           snapshot: selection => root.MJCollectorSnapshot.snapshot(state, selection),
+          analysisContext: () => {
+            const observation = controller.exportData();
+            const prefix = view.historical ? [] : view.mode === 'replay' ? observation.replayRecords.slice(0, view.cursor) : observation.events;
+            let start = prefix.length - 1;
+            while (start >= 0 && prefix[start].kind !== 'NewRound') start--;
+            // The worker applies the actual data-selection whitelist again before storing or sending.
+            const events = prefix.slice(Math.max(start, prefix.length - 64)).map(e => ({
+              kind: e.kind, source: e.source, step: e.step, recordIndex: e.recordIndex, seat: e.seat,
+              tile: e.kind === 'DealTile' && e.seat !== state.selfSeat ? '?' : e.tile,
+              tiles: e.tiles, meldType: e.meldType, riichi: e.riichi, tsumogiri: e.tsumogiri
+            }));
+            return { identity: view.contextIdentity, position: view.mode === 'replay' && !view.historical ? view.cursor : state.lastStep, events };
+          },
           engineRequest: selection => {
             if (!selection.game || selection.rivers !== 'all' || !selection.hand) throw new Error('专业引擎需要授权对局信息、全部牌河和自家手牌。');
             return root.MJMjaiAdapter.fromObservation(controller.exportData(), { seat: state.selfSeat, hand: true });
@@ -42,6 +55,7 @@
         };
         root.MJAnalysisPanel.mount(analysisSlot, analysisView, {
           mode: view.historical ? 'history' : view.mode, historyView: view.historyView,
+          contextIdentity: view.contextIdentity,
           replayRevision: view.mode === 'replay' ? view.replayRevision : null,
           cursor: !view.historical && view.mode === 'replay' ? view.cursor : null
         }, render, hintHooks);

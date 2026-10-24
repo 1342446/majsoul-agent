@@ -7,6 +7,8 @@ export const providers = {
   __MJ_OBSERVER_STATE_V1__: 'state.js', MJHistory: 'history.js', MJMahjongAnalysis: 'mahjong-analysis.js',
   MJSnapshotContract: 'contracts/snapshot.js', MJCollectorSnapshot: 'collector/snapshot-adapter.js',
   MJModelEndpoint: 'adapters/model-endpoint.js', MJAnalysis: 'analysis.js', MJHarness: 'harness.js', MJAgent: 'agent.js',
+  MJPiRuntime: 'pi-runtime.js', MJRoundContext: 'round-context.js', MJModelUsage: 'model-usage.js',
+  MJModelSessionTransport: 'model-session-transport.js', MJRunStore: 'agent-run-store.js',
   MJMjaiAdapter: 'adapters/mjai.js', MJEngineEndpoint: 'adapters/engine-endpoint.js',
   MJNagaReplay: 'adapters/naga-replay.js', MJNagaPanel: 'naga-panel.js',
   MJEngineAgent: 'engine-agent.js', MJEngineResult: 'contracts/engine-result.js',
@@ -60,6 +62,7 @@ export function tokens(source) {
   scan(); return out;
 }
 export function dependencies(file, source) {
+  if (file === 'pi-runtime.js') { checkPiBundle(source); return []; }
   const ts = tokens(source), result = new Set();
   const add = name => {
     if (!name.startsWith('.')) throw new Error(`${file}: only relative static module references are supported: ${name}`);
@@ -94,6 +97,19 @@ export function dependencies(file, source) {
   return [...result];
 }
 const browser = new Set(['document', 'window', 'chrome', 'localStorage', 'sessionStorage', 'WebSocket', 'fetch', 'XMLHttpRequest', 'location', 'navigator']);
+export const agentOnlyModules = ['pi-runtime.js', 'round-context.js', 'model-usage.js', 'model-session-transport.js', 'agent-run-store.js'];
+// Only this generated vendor artifact bypasses project-global resolution. It has
+// its own stricter capability check and is checked against a reproducible build.
+export function checkPiBundle(source) {
+  if (!source.startsWith('var MJPiRuntime = (() => {') || !source.includes('@earendil-works/pi-agent-core/dist/agent-loop.js')) throw new Error('pi-runtime.js: expected standalone Pi bundle');
+  const ts = tokens(source);
+  for (let i = 0; i < ts.length; i++) {
+    const token = ts[i];
+    if (token.type !== 'id') continue;
+    if (['eval', 'require', 'import', 'export', 'importScripts', ...browser].includes(token.value)) throw new Error('pi-runtime.js: forbidden capability ' + token.value);
+    if (token.value === 'Function' && ts[i+1]?.value === '(') throw new Error('pi-runtime.js: dynamic code is forbidden');
+  }
+}
 export function workerImports(source) {
   const ts = tokens(source), files = [];
   for (let i = 0; i < ts.length; i++) if (ts[i].value === 'importScripts' && ts[i+1]?.value === '(') {
@@ -103,9 +119,11 @@ export function workerImports(source) {
 }
 export function checkSourceBoundary(file, source) {
   const deps = dependencies(file, source), ids = tokens(source).filter(t => t.type === 'id').map(t => t.value);
-  if (file.startsWith('collector/') && deps.some(dep => ['analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'agent.js', 'engine-agent.js', 'harness.js', 'adapters/model-endpoint.js', 'adapters/mjai.js', 'adapters/engine-endpoint.js', 'contracts/engine-result.js', 'mahjong-analysis.js'].includes(dep))) throw new Error(`${file}: collector must not depend on analysis/model layers`);
+  if (file.startsWith('collector/') && deps.some(dep => [...agentOnlyModules, 'analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'agent.js', 'engine-agent.js', 'harness.js', 'adapters/model-endpoint.js', 'adapters/mjai.js', 'adapters/engine-endpoint.js', 'contracts/engine-result.js', 'mahjong-analysis.js'].includes(dep))) throw new Error(`${file}: collector must not depend on analysis/model layers`);
   let allowed = null, pure = false;
   if (file.startsWith('contracts/')) { allowed = new Set(); pure = true; }
+  else if (file === 'round-context.js') { allowed = new Set(['contracts/snapshot.js']); pure = true; }
+  else if (['model-usage.js', 'model-session-transport.js', 'agent-run-store.js'].includes(file)) { allowed = new Set(); pure = true; }
   else if (file === 'harness.js') { allowed = new Set(); pure = true; }
   else if (file === 'agent.js') { allowed = new Set(['analysis.js', 'mahjong-analysis.js', 'harness.js', 'contracts/snapshot.js']); pure = true; }
   else if (file === 'engine-agent.js') { allowed = new Set(['harness.js', 'contracts/snapshot.js', 'contracts/engine-result.js', 'mahjong-analysis.js', 'adapters/mjai.js']); pure = true; }
@@ -118,7 +136,7 @@ export function checkSourceBoundary(file, source) {
     const ts = tokens(source);
     for (let i = 0; i < ts.length; i++) if (['root', 'globalThis', 'window'].includes(ts[i].value) && ts[i+1]?.value === '[' && ts[i+2]?.type !== 'string') throw new Error(`${file}: dynamic UI global access is forbidden`);
     if (deps.includes('agent.js') || deps.includes('engine-agent.js')) throw new Error(`${file}: UI must not depend on Agent`);
-    if (file === 'overlay.js' && deps.some(d => ['analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'adapters/model-endpoint.js'].includes(d))) throw new Error(`${file}: collector UI must not depend on analysis`);
+    if (file === 'overlay.js' && deps.some(d => [...agentOnlyModules, 'analysis.js', 'analysis-panel.js', 'naga-panel.js', 'adapters/naga-replay.js', 'hand-hints.js', 'adapters/model-endpoint.js'].includes(d))) throw new Error(`${file}: collector UI must not depend on analysis`);
     if (file === 'floating-panel.js') allowed = new Set(['panel-theme.js']);
     if (file === 'hand-hints.js') allowed = new Set();
   }

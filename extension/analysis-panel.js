@@ -41,7 +41,9 @@
       const data = snapshot(), external = automatic ? usesModel(data) : preferences.useModel;
       if (external && (!available || !enabled)) throw new Error('请先在模型设置中接入并开启模型。');
       const actualProvider = external ? provider : 'local', requestedTask = automatic ? task : 'combined';
-      const extra = external && provider === 'mjai' ? { engineRequest: engineRequest(requestedTask) } : {};
+      const extra = external && provider === 'mjai' ? { engineRequest: engineRequest(requestedTask) }
+        : external ? { lane: automatic ? 'live' : 'manual-review', question: automatic ? '' : questionDraft,
+          context: typeof current.analysisContext === 'function' ? current.analysisContext() : undefined } : {};
       const captured = fingerprint(), seatLabels = current.seatLabels.slice();
       const capturedPosition = { round: data.game?.round, source: context?.mode, cursor: context?.cursor, selfSeat: data.selfSeat, hand: data.selfHand?.slice() || [] };
       pendingFingerprint = automatic ? captured : ''; pendingAutomatic = automatic; busy = true;
@@ -83,7 +85,7 @@
     autoTimer = setTimeout(() => { autoTimer = null; if (key !== fingerprint()) return; lastAutoKey = key; runAnalysis(true); }, delay);
   }
   let task = 'combined', enabled = false, busy = false, result = null, failure = '', preview = false, provider = 'chat';
-  let pendingAutomatic = false, globalResult = null, globalFailure = '';
+  let pendingAutomatic = false, globalResult = null, globalFailure = '', questionDraft = '';
   let modelFailures = {}, modelFailureExpanded = {};
   let focusTile = null, hooks = {}, detailsState = {}, current, context, repaint, requestId = 0, lifecycle = 0, statusRequestId = 0, connected = false;
   let focusExpanded = false, focusResizeObserver = null;
@@ -114,7 +116,12 @@
       ${r.efficiency.length ? '<h4>牌效率解释</h4>' + r.efficiency.map(e => `<div class="analysis-card">${face(e.tile)} ${reasons(e.reasons)}</div>`).join('') : ''}
       <h4>建议</h4><p>${decisionHeading(response)} ${r.decision.tile ? face(r.decision.tile) : ''} ${reasons(r.decision.reasons)}</p>
       ${r.limitations.length ? `<p class="warn">${reasons(r.limitations)}</p>` : ''}
-      ${response.trace ? `<details data-section="trace"><summary>Agent 运行记录</summary><ol>${response.trace.events.map(event => `<li>${escape(event.tool)} · ${escape(event.status)} · ${escape(event.elapsedMs)} ms</li>`).join('')}</ol></details>` : ''}`;
+      ${response.trace ? `<details data-section="trace"><summary>Agent 运行记录</summary><ol>${response.trace.events.map(event => `<li>${escape(event.tool)} · ${escape(event.status)} · ${escape(event.elapsedMs)} ms</li>`).join('')}</ol>${response.runtime ? `<p>${escape(response.runtime.name)} · ${escape(response.runtime.turns)} 次模型请求 · ${escape(response.runtime.toolCalls)} 次工具调用</p>` : ''}</details>` : ''}
+      ${response.usage ? usageHtml(response) : ''}`;
+  }
+  function usageHtml(response) {
+    const u = response.usage, show = v => Number.isFinite(v) ? escape(v) : '未知';
+    return `<details data-section="usage"><summary>用量与费用</summary><p class="muted">${response.contextMode === 'round' ? '小局上下文' : '当前快照'} · ${show(response.calls)} 次请求 · ${show(response.elapsedMs)} ms</p><p>输入 ${show(u.inputTokens)} · 缓存读取 ${show(u.cacheReadTokens)} · 缓存写入 ${show(u.cacheWriteTokens)} · 输出 ${show(u.outputTokens)} · 思考 ${show(u.reasoningTokens)}</p><p>估算费用：${Number.isFinite(response.cost?.totalCost) ? `${escape(response.cost.currency)} ${escape(response.cost.totalCost.toFixed(6))}` : '未知（需接口返回用量并配置价格）'}</p></details>`;
   }
   function localHtml(local, phase) {
     const e = local?.efficiency;
@@ -185,7 +192,7 @@
       if (busy) send({ type: 'model:cancel' }).catch(() => {});
     }
     connected = false; enabled = false; busy = false; result = null; failure = ''; preview = false; provider = 'chat';
-    globalResult = null; globalFailure = ''; pendingAutomatic = false;
+    globalResult = null; globalFailure = ''; pendingAutomatic = false; questionDraft = '';
     modelFailures = {}; modelFailureExpanded = {};
     current = null; context = null; repaint = null;
     preparationKey = ''; preparation = null; preparationError = ''; preparationBusy = false;
@@ -224,7 +231,7 @@
       danger: result.result.danger, seatLabels: result.seatLabels.slice()
     } : null);
     let payload = '', error = '';
-    try { const raw = snapshot(); if (preview) requestPreparation(raw); payload = preparation ? JSON.stringify(preparation, null, 2) : '正在整理实际发送的数据…'; } catch (e) { error = e.message; }
+    try { const raw = snapshot(); if (preview) requestPreparation(raw); payload = preparation ? JSON.stringify(preparation, null, 2) : '正在整理当前局面数据…'; } catch (e) { error = e.message; }
     if (preview && preparationError) error = preparationError;
     const disclosure = (key, label, content) => `<details data-section="${key}" ${detailsState[key] ? 'open' : ''}><summary>${label}</summary>${content}</details>`;
     const r = result?.result;
@@ -275,6 +282,7 @@
       globalResult.position.source === 'replay' ? `事件 ${globalResult.position.cursor}` : '', globalResult.time].filter(Boolean).join(' · ') : '';
     const globalHtml = `<section class="analysis-global" aria-label="全局分析">
       <h3>全局分析</h3>
+      ${provider === 'chat' && preferences.useModel ? `<label for="model-question">追问（可选）</label><textarea id="model-question" maxlength="4000" rows="2" placeholder="例如：为什么刚才建议打这张牌？">${escape(questionDraft)}</textarea>` : ''}
       <div class="analysis-actions"><button id="model-run" ${busy || !!error || !preferencesLoaded ? 'disabled' : ''}>${replay ? '分析所选局面' : '分析当前局面'}</button>${globalBusy ? '<button id="model-cancel">取消</button>' : ''}</div>
       ${globalResult ? `<p class="analysis-meta muted">${escape(savedPosition)} · ${escape(globalResult.model)}</p><div class="analysis-global-result">
         <div class="analysis-decision"><span>${decisionHeading(globalResult)}</span>${globalResult.result.decision.tile ? face(globalResult.result.decision.tile) : ''}<p>${escape(globalResult.result.decision.reasons?.[0] || '请展开分析依据。')}</p></div>
@@ -351,10 +359,11 @@
       $(id).onchange = e => { if (e.isTrusted) changePreferences({ [key]: Math.min(max, Math.max(min, Math.trunc(Number(e.target.value)) || min)) }); };
     }
     $('model-preview').onclick = () => { preview = !preview; render(); };
+    if (provider === 'chat' && preferences.useModel) $('model-question').oninput = event => { questionDraft = String(event.target.value || '').slice(0, 4000); };
     if (globalBusy) $('model-cancel').onclick = event => { if (event.isTrusted) { cancelWork(); globalFailure = '已取消分析。'; render(); } };
     $('model-run').onclick = event => { if (event.isTrusted && preferencesLoaded) return runAnalysis(); };
     if (selectedSnapshot && context?.mode === 'live') {
-      const nextRound = JSON.stringify([ selectedSnapshot.game?.round, selectedSnapshot.game?.honba]);
+      const nextRound = JSON.stringify([context?.contextIdentity, selectedSnapshot.game?.round, selectedSnapshot.game?.honba]);
       if (nextRound !== roundKey || (selectedSnapshot.rivers?.find(r => r.seat === selectedSnapshot.selfSeat)?.discards.length || 0) < previousDiscards) { roundKey = nextRound; autoCalls = 0; lastAutoKey = ''; }
       previousDiscards = selectedSnapshot.rivers?.find(r => r.seat === selectedSnapshot.selfSeat)?.discards.length || 0;
     }

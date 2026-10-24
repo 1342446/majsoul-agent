@@ -13,6 +13,8 @@
   let historyMatches = [], liveMatch = null, historyMatchId = '', historyView = null, historyWarning = '', historyReady = false;
   const historyDirty = new Map();
   let writeQueue = Promise.resolve();
+  const contextInstance = `${now()}-${Math.random().toString(36).slice(2)}`;
+  let liveRoundStart = null, liveRoundSequence = 0;
   function schedule() { for (const listener of listeners) listener(); }
   function viewedState() {
     return historyView ? historyMatches.find(m => m.id === historyView.match)?.rounds.find(r => r.key === historyView.round)?.snapshot : null;
@@ -42,10 +44,13 @@
   function newLiveMatch() { return H.create('live', 'live-' + id(), now()); }
   function recordLive(before, event, after) {
     if (event.kind === 'MJStart') {
+      liveRoundStart = null;
       if (liveMatch && before.round && before.phase !== 'ended') saveHistory(H.addRound(liveMatch, before, now(), true));
       liveMatch = newLiveMatch(); historyMatchId = liveMatch.id; return;
     }
     if (event.kind === 'NewRound') {
+      // A fresh opening is a new identity even when the displayed round/honba repeats.
+      liveRoundStart = `${contextInstance}:${++liveRoundSequence}`;
       const newMatch = H.isNewMatch(liveMatch, before, event);
       if (liveMatch && before.round && before.phase !== 'ended' &&
           (before.round.wind !== event.wind || before.round.index !== event.round || before.honba !== event.honba)) {
@@ -77,10 +82,15 @@
 
   function getView() {
     const historical = viewedState();
+    let start = cursor - 1;
+    while (start >= 0 && records[start].kind !== 'NewRound') start--;
+    const contextIdentity = historical ? { matchId: historyView.match, roundStartId: `history:${historyView.round}`, viewId: 'history' }
+      : mode === 'live' ? { matchId: liveMatch?.id || null, roundStartId: liveRoundStart, viewId: 'live' }
+        : { matchId: `replay:${contextInstance}:${replayRevision}`, roundStartId: start >= 0 ? String(start) : null, viewId: 'replay' };
     const recentEvents = historical ? [] : mode === 'live' ? log.slice(-12).reverse() : records.slice(Math.max(0, cursor - 8), cursor).reverse();
     return clone({ mode, live, replayState, recordCount: records.length, replayRevision, recentEvents, cursor, diagnostics, stats,
       connections: [...connections], historyMatches, historyMatchId, historyView, historyWarning,
-      historyReady, historical, state: historical || (mode === 'live' ? live : replayState) });
+      historyReady, historical, contextIdentity, state: historical || (mode === 'live' ? live : replayState) });
   }
   function exportData() {
     return clone({ format: 'mj-observer-v1', exportedAt: new Date(now()).toISOString(), mode, stats,

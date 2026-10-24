@@ -12,9 +12,9 @@ import tempfile
 ROOT = Path(__file__).resolve().parent.parent
 ROOT_FILES = [
     '.gitignore', '.gitattributes', 'LICENSE', 'README.md', 'README.en.md', 'README.ja.md', 'CHANGELOG.md', 'CONTRIBUTING.md',
-    'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'ARCHITECTURE.md', 'VALIDATION.md', 'package.json'
+    'SECURITY.md', 'THIRD_PARTY_NOTICES.md', 'ARCHITECTURE.md', 'VALIDATION.md', 'package.json', 'package-lock.json'
 ]
-SOURCE_DIRS = ['extension', 'agent', 'tests', 'scripts', '.github', 'docs']
+SOURCE_DIRS = ['extension', 'agent', 'tests', 'scripts', '.github', 'docs', 'licenses']
 SECRET_PATTERNS = [
     rb'-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----',
     rb'\b(?:sk-(?:proj-)?[A-Za-z0-9_-]{24,}|ghp_[A-Za-z0-9]{30,}|github_pat_[A-Za-z0-9_]{30,}|AKIA[0-9A-Z]{16})\b'
@@ -73,10 +73,10 @@ def verify():
 
 
 def stable_snapshot(destination, ref, version='0.2.1'):
-    """Project committed runtime/tests plus this preparation's assets and documents."""
+    """Keep committed runtime, build scripts and dependencies from the same ref."""
     def committed(path):
         return subprocess.check_output(['git', 'show', ref + ':' + path], cwd=ROOT)
-    paths = subprocess.check_output(['git', 'ls-tree', '-r', '-z', '--name-only', ref, '--', 'extension', 'tests'], cwd=ROOT).decode().split('\0')
+    paths = subprocess.check_output(['git', 'ls-tree', '-r', '-z', '--name-only', ref, '--', 'extension', 'tests', 'scripts', 'agent', '.github'], cwd=ROOT).decode().split('\0')
     for relative in filter(None, paths):
         if relative.startswith('extension/tiles/'):
             continue
@@ -84,7 +84,12 @@ def stable_snapshot(destination, ref, version='0.2.1'):
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(committed(relative))
     for name in ROOT_FILES:
-        data = committed(name) if name == 'ARCHITECTURE.md' else (ROOT / name).read_bytes()
+        if name == 'package-lock.json':
+            # Older dependency-free releases predate a lockfile. Never import
+            # today's Pi lockfile into their committed runtime/build scripts.
+            if subprocess.run(['git', 'cat-file', '-e', ref + ':' + name], cwd=ROOT, capture_output=True).returncode:
+                continue
+        data = committed(name) if name in {'ARCHITECTURE.md', 'package.json', 'package-lock.json'} else (ROOT / name).read_bytes()
         if name == 'VALIDATION.md':
             current = data.decode('utf-8').replace('\r\n', '\n')
             start = current.index('## 0.2.1 ')
@@ -96,7 +101,19 @@ def stable_snapshot(destination, ref, version='0.2.1'):
     package = json.loads(package_path.read_text(encoding='utf-8'))
     package['version'] = version
     package_path.write_text(json.dumps(package, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
-    for name in ['scripts', 'docs', '.github']:
+    lock_path = destination / 'package-lock.json'
+    if lock_path.exists():
+        lock = json.loads(lock_path.read_text(encoding='utf-8'))
+        lock['version'] = version
+        if '' in lock.get('packages', {}):
+            lock['packages']['']['version'] = version
+    else:
+        if any(package.get(key) for key in ['dependencies', 'devDependencies', 'optionalDependencies']):
+            raise ValueError('Selected ref has npm dependencies but no committed package-lock.json; use a reproducible ref')
+        lock = {'name': package['name'], 'version': version, 'lockfileVersion': 3, 'requires': True,
+                'packages': {'': {key: package[key] for key in ['name', 'version', 'license', 'engines'] if key in package}}}
+    lock_path.write_text(json.dumps(lock, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    for name in ['docs', 'licenses']:
         shutil.copytree(ROOT / name, destination / name, ignore=shutil.ignore_patterns('__pycache__'))
     shutil.copytree(ROOT / 'extension/tiles', destination / 'extension/tiles')
     for path in (destination / 'extension').glob('*.js'):
@@ -108,6 +125,23 @@ def stable_snapshot(destination, ref, version='0.2.1'):
     for resource in manifest['web_accessible_resources']:
         resource['resources'] = [name.replace('tiles/*.svg', 'tiles/*.svg') for name in resource['resources']]
     manifest_path.write_text(json.dumps(manifest, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+    for profile_path in (destination / 'extension/profiles').glob('*.json'):
+        profile = json.loads(profile_path.read_text(encoding='utf-8'))
+        profile['version'] = version
+        profile_path.write_text(json.dumps(profile, ensure_ascii=False, indent=2) + '\n', encoding='utf-8')
+
+
+def install_snapshot_dependencies(destination):
+    """Only isolated base-ref snapshots need a separate dependency install."""
+    package = json.loads((destination / 'package.json').read_text(encoding='utf-8'))
+    if not any(package.get(key) for key in ['dependencies', 'devDependencies', 'optionalDependencies']):
+        return
+    if not (destination / 'package-lock.json').is_file():
+        raise ValueError('Dependency-bearing snapshot requires package-lock.json')
+    npm = shutil.which('npm')
+    if not npm:
+        raise RuntimeError('npm is required to verify this dependency-bearing base-ref snapshot')
+    subprocess.run([npm, 'ci', '--ignore-scripts', '--no-audit', '--no-fund'], cwd=destination, check=True)
 
 
 def main(output=None):
@@ -165,6 +199,7 @@ if __name__ == '__main__':
         with tempfile.TemporaryDirectory(prefix='majsoul-public-') as folder:
             destination = Path(folder)
             stable_snapshot(destination, args.base_ref, args.snapshot_version)
+            install_snapshot_dependencies(destination)
             ROOT = destination
             main(output)
     else:

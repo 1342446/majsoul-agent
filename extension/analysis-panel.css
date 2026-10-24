@@ -72,3 +72,5 @@
 .analysis input[type="checkbox"]{accent-color:var(--mj-accent, #8bd4d1)}
 .analysis input[type="number"]{width:60px;font:inherit;color:inherit;background:var(--mj-surface, #2b343b);border:1px solid var(--mj-border, #46515a);border-radius:4px;padding:4px}
 .analysis :is(button,input,select):focus-visible{outline:2px solid var(--mj-accent, #8bd4d1);outline-offset:2px}
+.analysis textarea{display:block;width:100%;resize:vertical;min-height:50px;max-height:160px;margin:5px 0;font:inherit;color:inherit;background:var(--mj-surface, #2b343b);border:1px solid var(--mj-border, #46515a);border-radius:6px;padding:7px}
+.analysis textarea:focus-visible{outline:2px solid var(--mj-accent, #8bd4d1);outline-offset:2px}

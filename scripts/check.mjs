@@ -6,6 +6,8 @@ import { join } from 'node:path';
 import { execFileSync } from 'node:child_process';
 
 const root = fileURLToPath(new URL('../', import.meta.url));
+const { bundlePiRuntime } = await import('./bundle-pi-runtime.mjs');
+await bundlePiRuntime({ check: true });
 const manifest = JSON.parse(readFileSync(join(root, 'extension/manifest.json'), 'utf8'));
 const pkg = JSON.parse(readFileSync(join(root, 'package.json'), 'utf8'));
 if (manifest.version !== pkg.version) throw new Error('Package and extension versions differ');

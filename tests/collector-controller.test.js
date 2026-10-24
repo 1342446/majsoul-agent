@@ -51,6 +51,25 @@ test('replay revision tracks replacement even at identical lengths, independentl
   await c.flush();
 });
 
+test('analysis identity distinguishes repeated live openings and only the replay prefix selects round start', async () => {
+  const c = make(); send(c, opening());
+  const first = c.getView().contextIdentity;
+  send(c, { source: 'live', kind: 'DealTile', seat: 1, tile: '2p', step: 1 });
+  assert.deepEqual(c.getView().contextIdentity, first);
+  send(c, opening()); assert.notEqual(c.getView().contextIdentity.roundStartId, first.roundStartId);
+  const records = [opening('replay', { recordIndex: 0 }),
+    { source: 'replay', kind: 'DiscardTile', seat: 2, tile: '1p', recordIndex: 1 }, opening('replay', { recordIndex: 2, round: 1 })];
+  c.receive({ type: 'replay', payload: { records } });
+  const before = c.getView().contextIdentity;
+  assert.equal(before.roundStartId, '0'); c.setCursor(2);
+  assert.deepEqual(c.getView().contextIdentity, before);
+  c.setCursor(3); assert.equal(c.getView().contextIdentity.roundStartId, '2');
+  c.setCursor(1); assert.deepEqual(c.getView().contextIdentity, before);
+  c.receive({ type: 'replay', payload: { records } });
+  assert.notEqual(c.getView().contextIdentity.matchId, before.matchId);
+  await c.flush();
+});
+
 test('pure controller keeps live and replay state independent and cursor excludes future draws', async () => {
   const c = make();
   send(c, opening()); c.setSelfSeat(1);

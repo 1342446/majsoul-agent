@@ -1,6 +1,20 @@
 # 参考资料与资源说明
 
-项目源码与当前原创SVG牌面使用 [MIT License](LICENSE)。不捆绑第三方运行库、字体文件或游戏资源；项目名称中的“雀魂 / Mahjong Soul”用于说明适用游戏，相关商标与游戏资产归各自权利人所有。本项目非官方，与游戏发行方及以下项目无隶属或合作关系。
+项目源码与当前原创SVG牌面使用 [MIT License](LICENSE)。Agent 扩展捆绑以下第三方运行库；不捆绑第三方字体文件或游戏资源。项目名称中的“雀魂 / Mahjong Soul”用于说明适用游戏，相关商标与游戏资产归各自权利人所有。本项目非官方，与游戏发行方及以下项目无隶属或合作关系。
+
+## 分发的第三方代码
+
+| 包 | 版本与版权 | 许可证与处理方式 |
+| --- | --- | --- |
+| [@earendil-works/pi-agent-core](https://github.com/earendil-works/pi/tree/v1.4.0/packages/agent) | 1.4.0；Copyright (c) 2025 Mario Zechner | MIT；真实 agent loop 打入 `pi-runtime.js`；完整文本见 [licenses/pi-LICENSE.txt](licenses/pi-LICENSE.txt) |
+| [@earendil-works/pi-ai](https://github.com/earendil-works/pi/tree/v1.4.0/packages/ai) | 1.4.0；Copyright (c) 2025 Mario Zechner | MIT；仅打入 transcript、event-stream、identity、validation 等浏览器工具代码，排除 provider 与 Node credential store；许可证同上 |
+| [TypeBox](https://github.com/sinclairzx81/typebox) | 1.3.27；Copyright (c) 2017-2026 Haydn Paterson | MIT；打入解释式 schema 校验等功能；完整文本见 [licenses/typebox-LICENSE.txt](licenses/typebox-LICENSE.txt) |
+
+Pi 的 `typebox/compile` 在构建时以同版本 TypeBox `Value.Check` / `Value.Errors` 解释执行适配层替换，以满足 MV3 禁止动态代码的要求。补丁与构建方式见 [docs/pi-runtime.md](docs/pi-runtime.md)，固定来源及许可证校验值见 [licenses/SOURCES.md](licenses/SOURCES.md)。许可证目录随两个扩展包附带；collector 包不含上述运行库代码。
+
+上述列表按 esbuild 最终输出中实际贡献字节的依赖审计。`partial-json` 等安装依赖经 tree shaking 后不进入扩展产物；esbuild 只在构建期间运行，不作为浏览器运行库分发。构建脚本会拒绝未审查的新分发依赖。
+
+## 开发参考
 
 开发时参考了以下公开资料。参考并不表示对方认可本项目，也不代表已验证当前客户端兼容性。
 

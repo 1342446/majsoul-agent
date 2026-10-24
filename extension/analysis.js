@@ -46,19 +46,20 @@
     const schema = JSON.parse(JSON.stringify(responseSchema)); schema.properties.task.enum = [task];
     const legalDiscards = task !== 'danger' && s.phase === 'playing' && local.efficiency?.status === 'available' && local.efficiency.canDiscard === true
       ? local.efficiency.candidates.map(c => c.tile) : [];
-    schema.properties.decision.properties.tile.enum = [...legalDiscards, null];
-    schema.properties.efficiency.maxItems = legalDiscards.length;
-    if (legalDiscards.length) schema.properties.efficiency.items.properties.tile.enum = legalDiscards;
-    if (task === 'danger') schema.properties.decision.properties.action.enum = ['unknown'];
+    if (task === 'danger') {
+      schema.properties.decision.properties.tile.enum = [null];
+      schema.properties.decision.properties.action.enum = ['unknown'];
+      schema.properties.efficiency.maxItems = 0;
+    }
     if (task === 'efficiency') schema.properties.danger.maxItems = 0;
-    schema.properties.danger.items.properties.opponents.items.properties.seat.enum = Array.from({ length: s.playerCount }, (_, i) => i).filter(i => i !== s.selfSeat);
-    const riskTiles = local.danger.candidates.map(c => c.tile);
-    if (riskTiles.length) schema.properties.danger.items.properties.tile.enum = riskTiles;
-    else schema.properties.danger.maxItems = 0;
+    data.outputConstraints = {
+      legalDiscards,
+      riskTiles: task === 'efficiency' ? [] : local.danger.candidates.map(c => c.tile),
+      opponentSeats: Array.from({ length: s.playerCount }, (_, i) => i).filter(i => i !== s.selfSeat)
+    };
     schema.properties.decision.properties.reasons.description = '第一条向玩家说明所选攻守策略的具体依据及推荐牌的取舍；其余条目补充依据。进攻解释收益与风险，防守解释相对安全与保留的推进机会，弃和解释放弃和牌的原因与安全依据，unknown解释缺失信息及效率建议的边界。';
-    schema.properties.danger.items.properties.opponents.maxItems = s.selfSeat === null ? s.playerCount : s.playerCount - 1;
-    const modulePrompt = (task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined + '\n' + strategyExplanation : taskPrompts[task]) + '\n输出字段严格遵守本次JSON Schema：牌值使用列出的英文牌编码，赤五与普通五不可互换；建议牌只从列出的合法候选选取，无合法候选时返回null且efficiency为空。每张牌只列一次，每张牌下同一对手只列一次，空列表使用[]，列表中不得放null；不要增加额外字段。';
-    const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n内部校验规则（仅用于决定输出内容，不得写入理由）：只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。\n面向玩家的说明：decision.reasons第一条直接解释首选建议的牌理或攻守取舍，其余理由补充具体依据；不要用“满足条件”“允许建议具体弃牌”代替分析。所有reasons和limitations使用简短自然中文，不输出字段路径、布尔值、状态枚举或内部校验过程。仅说明实际影响判断的限制；无法建议弃牌时说“等待摸牌”或具体缺失的信息。不要把数据完整、校验通过当成限制。例如理由可写“保留两面搭子，优先打出孤张九万”，限制可写“尚未采集到对家的完整牌河，风险判断有限”；示例只说明表达方式，实际结论必须有当前数据支持。', userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data) + '\n输出JSON Schema：\n' + JSON.stringify(schema), responseSchema: schema };
+    const modulePrompt = (task === 'combined' ? taskPrompts.danger.replace('efficiency必须为空，decision.action必须为unknown且tile为null。', '') + '\n' + taskPrompts.efficiency.replace('danger必须为空；本任务不以猜测对手听牌牺牲效率。', '') + '\n' + taskPrompts.combined + '\n' + strategyExplanation : taskPrompts[task]) + '\n输出字段严格遵守本次JSON Schema：牌值使用英文牌编码，赤五与普通五不可互换；动态候选约束见数据的outputConstraints：建议牌和efficiency只从legalDiscards选取，danger只从riskTiles选取，对手座位只从opponentSeats选取；无合法候选时返回null且efficiency为空。每张牌只列一次，每张牌下同一对手只列一次，空列表使用[]，列表中不得放null；不要增加额外字段。';
+    const prepared = { task, data, systemPrompt: systemPrompt + '\n' + modulePrompt + '\n内部校验规则（仅用于决定输出内容，不得写入理由）：只有本地efficiency.status=available、canDiscard=true且phase=playing时才可建议具体弃牌；否则efficiency为空、decision.tile=null。safe只用于本地genbutsu=true的对应对手；riverAvailable=false时该对手level只能unknown。\n面向玩家的说明：decision.reasons第一条直接解释首选建议的牌理或攻守取舍，其余理由补充具体依据；不要用“满足条件”“允许建议具体弃牌”代替分析。所有reasons和limitations使用简短自然中文，不输出字段路径、布尔值、状态枚举或内部校验过程。仅说明实际影响判断的限制；无法建议弃牌时说“等待摸牌”或具体缺失的信息。不要把数据完整、校验通过当成限制。例如理由可写“保留两面搭子，优先打出孤张九万”，限制可写“尚未采集到对家的完整牌河，风险判断有限”；示例只说明表达方式，实际结论必须有当前数据支持。\n输出JSON Schema：\n' + JSON.stringify(schema), userPrompt: '请分析以下已授权局面数据：\n' + JSON.stringify(data), responseSchema: schema };
     preparations.set(key, JSON.stringify(prepared));
     if (preparations.size > 8) preparations.delete(preparations.keys().next().value);
     return prepared;

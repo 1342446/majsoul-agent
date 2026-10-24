@@ -2,19 +2,23 @@
 
 [简体中文](README.md) | **English** | [日本語](README.ja.md)
 
-A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically when enabled. Built with Manifest V3, with no third-party runtime dependencies or telemetry. LLM analysis is disabled by default.
+A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically when enabled. Built with Manifest V3, with a bundled MV3-adapted Pi Agent and no telemetry. LLM analysis is disabled by default.
 
 **Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
-This document describes **0.5.0**. It includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+The published **0.5.0** release includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+
+The current source version is **0.6.0**; the stable release remains **0.5.0**. Pi, round sessions, tools, follow-ups, and usage accounting below are new in the source and have not been released as a new stable version; existing 0.5.0 packages do not include them. Automated tests do not establish real model quality or playing strength.
 
 The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
 ![Floating analysis card with synthetic game data and model output](docs/images/agent-floating-preview.png)
 
 ## Features
+
+**New in source**: model settings default to `snapshot`; optional `round` retains authorized context for the current round. Manual global reviews support follow-up questions; automatic hints do not reuse manual explanation history. Four optional read-only mahjong tools have fixed budgets. Configure per-million-token prices, export the latest 100 numeric usage records, or clear local sessions and usage. Missing information stays unknown.
 
 - **Bring your own model API:** customize the endpoint, model ID, and API key to use different compatible services. Select table information, all or selected discard pools, and optionally your own hand; preview the payload and manually request danger or discard advice.
 - **Floating analysis card:** a separate, persistent result card with a draggable title and saved position. Click candidate tiles to compare explanations; hand details, local efficiency tables, and traces stay folded. The collector starts collapsed and opens independently for discards, dora, and history.
@@ -34,7 +38,7 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
 
-The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-ai-analysis-and-review-agent-0.5.0/` and `dist/majsoul-collector-0.5.0/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
+The independent `extension/profiles/agent.json` and `collector.json` profiles select `apps/agent-app.js` and `apps/collector-app.js` as composition entries. Building follows each profile's dependency closure to produce `dist/majsoul-ai-analysis-and-review-agent-<version>/` and `dist/majsoul-collector-<version>/`; load either directory directly. The collector package contains only the files needed for collection, display, history, and export.
 
 1. Download and extract the source ZIP, or clone the repository. For a source checkout, use the **`extension/` directory**.
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.
@@ -50,9 +54,9 @@ Only **`https://game.maj-soul.com/*`** is currently matched. Other regional doma
 
 The collector controller owns table state, replay cursors, history, and exports; the UI interacts through views and commands. A separate adapter maps the user's selection to the standard `mj-analysis-v1` DTO. The Agent depends on the pure data contract without reading collector state layouts, so another collector can supply the same DTO. The analysis panel receives only a snapshot function and display inputs. Composition entries connect these components; see [decoupling design](docs/DECOUPLING.md) and [architecture](ARCHITECTURE.md) (Chinese).
 
-The Agent maps danger, tile-efficiency, and combined tasks to bounded workflows. The harness executes registered tools, limits steps and runtime, propagates cancellation, and records tool metadata without game payloads or credentials. The full edition runs snapshot validation → local analysis and prompt preparation → model explanation → result validation. Successful results include a collapsible `Agent 运行记录` trace. This first version uses a fixed plan and at most one model request per run; the model does not select tools autonomously or retry indefinitely.
+The worker runs the real upstream `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0 lightweight Agent loop, adapted and bundled for MV3. Networking still uses the existing OpenAI-compatible transport; this does not add all providers' native SDKs. The harness retains snapshot validation, local preparation, model execution, strict result validation, cancellation, and traces. Default runs make one model request. Enabling tools allows at most 3 model requests and 4 tool calls per manual review; live analysis stays at 1 model request without a multi-turn tool chain. DeepSeek Harness is a design reference, not a dependency. See [round sessions and usage](docs/AGENT_SESSIONS.md) (Chinese).
 
-Review a collector `mj-observer-v1` JSON export locally with Node.js 22+:
+Review a collector `mj-observer-v1` JSON export locally with Node.js 22.19+:
 
 ```sh
 npm run review -- observation.json --seat 0 --hand --cursor 12
@@ -62,6 +66,8 @@ npm run eval
 `--seat` is a protocol seat ID from 0 to 3. `--hand` explicitly includes your own hand, which is excluded by default. For replays, `--cursor` applies only the first N events and never uses future states. Omit it for live exports, which use the exported snapshot. The CLI performs local analysis without a model request. The built-in evaluation contains three synthetic shanten regressions; it does not measure model quality or playing strength. See [Agent and harness](docs/AGENT.md) (Chinese).
 
 ## LLM setup
+
+`snapshot` does not persist conversations by default; optional `round` retains bounded history within a round. Rules and a static schema precede dynamic data, but Chat Completions still retransmits history. Fewer network bytes, server cache hits, and lower billed cost are separate outcomes; savings are not promised. Missing usage or partial failures leave unconfirmed totals and costs unknown. See [authorization and caching](docs/AGENT_SESSIONS.md) (Chinese).
 
 The full edition accepts your own model API; no project-specific service or account is required. LLM analysis and explanation remain the main use. The default provider is `chat`, with analysis disabled. One `chat` and one optional `mjai` configuration are retained separately; only the selected provider runs per request.
 
@@ -88,7 +94,7 @@ The three analysis tasks use separate data contracts and modular prompts. Danger
 
 The extension computes shape-based shanten and improving tiles locally for standard hands, seven pairs, and thirteen orphans. The model explains these results and weighs offense against defense. The table’s unseen-tile counts are upper bounds, not counts of tiles remaining in the wall; zero means all copies have been seen. For high-shanten hands, the calculation compares shape improvements rather than exhaustively searching every future draw/discard sequence. A 13-tile hand shows only its current shanten and improving tiles. After riichi, only the confirmed newly drawn tile can be recommended for discard; if it is unknown, no specific discard is suggested. Completed hands are analyzed only as mathematical reviews.
 
-Model output must follow a JSON Schema; JSON code fences are accepted. The extension rejects discard suggestions outside your hand or unsupported by locally legal candidates. Claims that a tile is genbutsu require local evidence from the relevant opponent’s discards. Shanten and improving-tile counts come from local calculations; model-provided numeric fields outside the contract are rejected. The preview shows the actual outgoing data, and local calculations run within the extension.
+Model output must follow a JSON Schema; JSON code fences are accepted. The extension rejects discard suggestions outside your hand or unsupported by locally legal candidates. Claims that a tile is genbutsu require local evidence from the relevant opponent’s discards. Shanten and improving-tile counts come from local calculations; model-provided numeric fields outside the contract are rejected. The preview shows current-position and local-analysis data. Round sessions also send authorized round history and the current question; the preview is not the complete request body. Local calculations run within the extension.
 
 The endpoint must support non-streaming `POST /chat/completions` with string content in `choices[0].message.content`; provider-side `response_format` support is not required. Native Anthropic, Gemini, and Responses API formats require a compatible gateway. Both request and response formats must be compatible, and the model must follow the JSON Schema described above. Requests time out after 25 seconds, with one concurrent request per tab.
 
@@ -129,9 +135,10 @@ The replay cursor is **independent of game playback**. Use the previous/next eve
 
 ## Development and validation
 
-Use Node.js 22 or newer. No runtime dependencies need to be installed:
+Development, checks, and builds require Node.js 22.19 or newer and the locked dependencies below. Loading the committed `extension/` or a built package requires no Node.js:
 
 ```sh
+npm ci
 npm run check
 npm test
 npm run build

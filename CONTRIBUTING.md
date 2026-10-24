@@ -4,17 +4,18 @@
 
 ## 本地开发
 
-使用Node.js 22或更新版本；没有第三方运行依赖，无需安装Python或启动调试端口。
+使用 Node.js 22.19 或更新版本，先运行 `npm ci` 安装锁定的 Pi 依赖与构建工具；无需安装 Python 或启动调试端口。仅加载已提交的 `extension/` 或已构建安装包无需 Node.js。
 
 ```sh
 git clone https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent.git
 cd majsoul-ai-analysis-and-review-agent
+npm ci
 npm run check
 npm test
 npm run build
 ```
 
-在浏览器扩展管理页加载完整版`extension/`，或构建出的`dist/majsoul-ai-analysis-and-review-agent-0.4.0/`；独立获取器加载`dist/majsoul-collector-0.4.0/`。源码变更后重新加载扩展并刷新游戏。离线演示可用任意本地静态服务器打开 `tests/preview.html`；演示只使用人工数据。
+在浏览器扩展管理页加载完整版`extension/`，或构建出的`dist/majsoul-ai-analysis-and-review-agent-<version>/`；独立获取器加载`dist/majsoul-collector-<version>/`。源码变更后重新加载扩展并刷新游戏。离线演示可用任意本地静态服务器打开 `tests/preview.html`；演示只使用人工数据。
 
 ## 修改与验证
 
@@ -27,6 +28,10 @@ npm run build
 - 牌面由 `scripts/generate-tiles.mjs` 生成；修改生成器后运行 `npm run tiles`，不要加入游戏截图替代SVG。
 - Agent编排修改`extension/agent.js`，执行预算与轨迹修改`extension/harness.js`，复盘与回归入口在`agent/`。保持模型传输和密钥在后台，不放进获取器。
 - 分发变更修改`extension/profiles/agent.json`或`collector.json`，agent profile同步默认manifest。运行`npm run check`和`npm run build`，验证静态依赖、纯核心能力边界、资源闭包与加载顺序；获取器包不得包含分析/模型代码、设置页或模型权限。新增项目全局须同步`scripts/check-boundaries.mjs`，保持静态可追踪引用，不通过源码字符串替换生成安装变体。`npm run eval`只是人工向听回归，不替代真实牌谱或模型质量评估。
+
+Pi worker loop 来自真实上游 `@earendil-works/pi-agent-core` / `pi-ai` 1.4.0。修改 MV3 适配时编辑 `scripts/pi-runtime-entry.mjs` 等构建源码，运行 `npm run pi:bundle` 更新已提交的 `extension/pi-runtime.js`，不要手改 bundle。网络、权限与密钥仍留在后台，不能把 Pi 上游支持的全部协议当作本扩展已接入能力。
+
+会话与用量改动应核对：默认 `snapshot` 无持久对话、`round` 授权历史隔离、牌谱回退及视角分支、worker 恢复、清理竞态、手动最多 3 次模型请求 / 4 次工具调用、实时最多 1 次模型请求。缺失用量及部分失败保持未知，数值运行记录与导出不得包含 prompt、牌局正文或密钥。详见[小局会话、工具与用量](docs/AGENT_SESSIONS.md)。测试不能证明真实模型质量、缓存命中率或省钱效果。
 
 ## 多语言介绍
 

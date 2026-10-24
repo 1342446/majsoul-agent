@@ -23,7 +23,7 @@ function input() {
 }
 function worker(config, fetcher = fetch, permission = true, schedule = {}) {
   const listeners = [], requests = []; let changed;
-  const context = vm.createContext({ URL, TextDecoder, Uint8Array, AbortController, setTimeout, clearTimeout,
+  const context = vm.createContext({ URL, TextEncoder, TextDecoder, Uint8Array, AbortController, DOMException, structuredClone, performance, setTimeout, clearTimeout,
     chrome: { storage: { local: { setAccessLevel() {}, get: schedule.get || (async () => ({ modelConfig: config })) }, onChanged: { addListener(fn) { changed = fn; } } },
       permissions: { contains: schedule.contains || (async () => permission) }, runtime: { id: 'fixture', onMessage: { addListener(fn) { listeners.push(fn); } } } },
     fetch: async (...args) => { requests.push(args); return fetcher(...args); }
@@ -31,7 +31,7 @@ function worker(config, fetcher = fetch, permission = true, schedule = {}) {
   context.importScripts = (...files) => files.forEach(file => vm.runInContext(fs.readFileSync(path.join(__dirname,'../extension',file),'utf8'),context));
   vm.runInContext(fs.readFileSync(path.join(__dirname,'../extension/background.js'),'utf8'),context);
   const sender = { id: 'fixture', tab: { id: 7 }, frameId: 0, url: 'https://game.maj-soul.com/1/' };
-  const call = (message, from = sender) => new Promise(resolve => { if (listeners.at(-1)(message,from,resolve) !== true) resolve(undefined); });
+  const call = (message, from = sender) => new Promise(resolve => { if (listeners.at(-1)(message,from,value => resolve(structuredClone(value))) !== true) resolve(undefined); });
   return { call, requests, changed: (...args) => changed(...args), sender };
 }
 const configured = endpoint => ({ enabled: true, provider: 'mjai', model: 'mjai', endpoint, apiKey: 'test-engine-token' });

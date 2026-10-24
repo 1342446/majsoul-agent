@@ -1,18 +1,28 @@
 {
   "name": "majsoul-ai-analysis-and-review-agent",
   "private": true,
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Mahjong Soul game observation, AI analysis and replay review with user-configured model APIs and optional mahjong engines.",
   "license": "MIT",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22.19.0"
+  },
   "scripts": {
     "test": "node --test tests/*.test.js",
     "check": "node scripts/check.mjs",
     "tiles": "node scripts/generate-tiles.mjs",
     "build": "node scripts/build-extensions.mjs",
+    "pi:bundle": "node scripts/bundle-pi-runtime.mjs",
     "review": "node agent/review.cjs",
     "eval": "node agent/eval.cjs",
     "engine:serve": "node agent/engine-server.cjs",
     "engine:review": "node agent/engine-review.cjs"
+  },
+  "dependencies": {
+    "@earendil-works/pi-agent-core": "1.4.0",
+    "@earendil-works/pi-ai": "1.4.0"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.12"
   }
 }

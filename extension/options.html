@@ -14,10 +14,25 @@
 <p id="thinkingHint" class="hint"></p>
 <label for="maxTokens">输出上限（tokens）</label><input id="maxTokens" type="number" min="1" max="393216" step="1" required>
 <p class="hint">包含思考与正文；实际可用上限以模型为准。</p>
+<label for="contextMode">分析上下文</label><select id="contextMode"><option value="snapshot">当前局面（默认）</option><option value="round">本局连续会话</option></select>
+<p class="hint">连续会话保留本局已授权的分析上下文，换局后重新开始。</p>
+<label><input id="toolCalling" type="checkbox"> 允许调用本地分析工具</label>
+<p class="hint">API 需支持 tools。手动分析最多 3 次模型请求、4 次工具调用；自动实时分析每次最多 1 次模型请求。</p>
+<details class="pricing"><summary>费用估算（可选）</summary>
+<p class="hint">填写服务商每百万 token 的价格。未知项请留空，缺少价格时费用显示为未知；不会自动查询价格或换算币种。</p>
+<label for="priceCurrency">币种</label><input id="priceCurrency" placeholder="例如 USD 或 CNY" maxlength="16">
+<div class="price-grid">
+<div><label for="priceInput">未缓存输入</label><input id="priceInput" type="number" min="0" step="any" placeholder="未知"></div>
+<div><label for="priceOutput">输出（含思考）</label><input id="priceOutput" type="number" min="0" step="any" placeholder="未知"></div>
+<div><label for="priceCacheRead">缓存读取</label><input id="priceCacheRead" type="number" min="0" step="any" placeholder="未知"></div>
+<div><label for="priceCacheWrite">缓存写入</label><input id="priceCacheWrite" type="number" min="0" step="any" placeholder="未知"></div>
+</div></details>
 </div>
 <label for="key" id="keyLabel">API Key</label><input id="key" type="password" autocomplete="off" placeholder="本地服务无需密钥时可留空" maxlength="4096">
 <p class="hint">开启模型调用后，将向所配置的服务发送公开牌局信息和自家手牌，可能产生费用。</p>
 <div class="actions"><button type="submit">保存设置</button><button type="button" id="disable">关闭分析</button><button type="button" id="clear">清除配置</button></div>
+<div class="actions"><button type="button" id="exportUsage">导出用量记录</button><button type="button" id="clearAgentData">清除本地会话和运行用量</button></div>
+<p class="hint">用量记录保存在本机，可导出比较两种上下文的 token 和费用；不包含提示词、牌局正文或密钥。</p>
 </form><p id="status" role="status" aria-live="polite"></p>
 <p class="hint footnote">密钥仅保存在本机。</p>
 </main><script src="adapters/model-endpoint.js"></script><script src="adapters/engine-endpoint.js"></script><script src="options.js"></script></body></html>

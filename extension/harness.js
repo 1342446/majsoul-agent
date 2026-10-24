@@ -3,7 +3,7 @@
   'use strict';
   async function run({ steps, tools, input, signal, maxSteps = 6, timeoutMs = 25000, onEvent }) {
     if (!Array.isArray(steps) || !steps.length || steps.length > maxSteps || maxSteps > 16 ||
-        !Number.isInteger(maxSteps) || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 60000) {
+        !Number.isInteger(maxSteps) || !Number.isFinite(timeoutMs) || timeoutMs < 1 || timeoutMs > 120000) {
       throw new Error('Invalid harness execution budget');
     }
     for (const name of steps) {

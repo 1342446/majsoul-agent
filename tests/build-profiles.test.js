@@ -11,6 +11,10 @@ test('collector installs without model files, optional model hosts or settings; 
   try {
     const [agent, collector] = buildExtensions(temporary);
     for (const directory of [agent, collector]) {
+      for (const file of ['LICENSE', 'THIRD_PARTY_NOTICES.md', 'licenses/SOURCES.md', 'licenses/pi-LICENSE.txt', 'licenses/typebox-LICENSE.txt']) {
+        assert.ok(existsSync(join(directory, file)), file);
+        assert.equal(readFileSync(join(directory, file), 'utf8'), readFileSync(join(__dirname, '..', file), 'utf8'));
+      }
       const manifest = JSON.parse(readFileSync(join(directory, 'manifest.json')));
       for (const group of manifest.content_scripts) for (const script of group.js) assert.ok(existsSync(join(directory, script)));
       assert.ok(existsSync(join(directory, manifest.background.service_worker)));
@@ -25,6 +29,9 @@ test('collector installs without model files, optional model hosts or settings; 
     }
     assert.ok(existsSync(join(collector, 'apps/collector-app.js')));
     assert.equal(existsSync(join(collector, 'apps/agent-app.js')), false);
+    for (const file of ['pi-runtime.js', 'round-context.js', 'model-usage.js', 'model-session-transport.js', 'agent-run-store.js']) {
+      assert.equal(existsSync(join(collector, file)), false, 'collector excludes ' + file);
+    }
     assert.ok(existsSync(join(agent, 'apps/agent-app.js')));
     assert.equal(existsSync(join(agent, 'apps/collector-app.js')), false);
     for (const script of ['contracts/snapshot.js', 'collector/snapshot-adapter.js', 'adapters/model-endpoint.js', 'adapters/mjai.js', 'adapters/naga-replay.js', 'naga-panel.js', 'naga-panel.css', 'adapters/engine-endpoint.js', 'contracts/engine-result.js', 'engine-agent.js', 'analysis.js', 'analysis-panel.js', 'analysis-panel.css', 'hand-hints.js', 'floating-panel.js', 'mahjong-analysis.js', 'agent.js', 'harness.js', 'background.js', 'options.html']) {

@@ -41,7 +41,28 @@ test('architecture rules reject forbidden static and browser-global dependencies
     ['collector/controller.js', 'importScripts(path)'],
     ['collector/controller.js', 'import(path)']
   ];
+  for (const name of ['MJPiRuntime', 'MJRoundContext', 'MJModelUsage', 'MJModelSessionTransport', 'MJRunStore']) {
+    cases.push(['collector/browser-adapter.js', `root.${name}.run()`]);
+    cases.push(['overlay.js', `root.${name}.run()`]);
+    cases.push(['agent.js', `root.${name}.run()`]);
+  }
+  for (const file of ['round-context.js', 'model-usage.js', 'model-session-transport.js', 'agent-run-store.js']) {
+    cases.push([file, 'chrome.storage.local.get()']);
+    cases.push([file, 'fetch(url)']);
+    cases.push([file, 'root.MJPiRuntime.run()']);
+  }
   for (const [file, source] of cases) assert.throws(() => checkSourceBoundary(file, source), undefined, `${file}: ${source}`);
+});
+
+test('Pi vendor bundle has a separate precise capability check', async () => {
+  const { dependencies, checkPiBundle } = await import('../scripts/check-boundaries.mjs');
+  const bundle = readFileSync(join(__dirname, '../extension/pi-runtime.js'), 'utf8');
+  assert.deepEqual(dependencies('pi-runtime.js', bundle), []);
+  for (const injected of ['fetch(url)', 'eval(code)', 'Function(code)', 'import(url)', 'chrome.runtime.sendMessage()', 'importScripts(url)']) {
+    assert.throws(() => checkPiBundle(bundle + '\n' + injected), /forbidden|dynamic/);
+  }
+  assert.throws(() => dependencies('pi-runtime.js', 'var arbitrary = 1;'), /expected standalone/);
+  assert.throws(() => dependencies('unregistered-vendor.js', 'root.MJUnknown.run()'), /undeclared project global/);
 });
 
 test('lexical rules ignore comment/string/regex text and scan template expressions', async () => {
@@ -82,5 +103,18 @@ test('source check enforces explicit default Agent profile equality', async () =
     manifest.permissions.push('tabs');
     writeFileSync(join(temporary, 'manifest.json'), JSON.stringify(manifest));
     assert.throws(() => checkProfiles(temporary), /Default manifest differs/);
+  } finally { rmSync(temporary, { recursive: true, force: true }); }
+});
+
+test('collector profile closure rejects an explicitly exposed Pi bundle', async () => {
+  const { checkProfiles } = await import('../scripts/build-extensions.mjs');
+  const temporary = mkdtempSync(join(tmpdir(), 'majsoul-collector-pi-'));
+  try {
+    cpSync(join(__dirname, '../extension'), temporary, { recursive: true });
+    const path = join(temporary, 'profiles/collector.json');
+    const manifest = JSON.parse(readFileSync(path, 'utf8'));
+    manifest.web_accessible_resources = [...(manifest.web_accessible_resources || []), { resources: ['pi-runtime.js'], matches: ['https://game.maj-soul.com/*'] }];
+    writeFileSync(path, JSON.stringify(manifest));
+    assert.throws(() => checkProfiles(temporary), /Collector dependency closure contains analysis\/model files/);
   } finally { rmSync(temporary, { recursive: true, force: true }); }
 });

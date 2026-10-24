@@ -21,4 +21,7 @@ button:disabled{opacity:.5;cursor:default}
 :focus-visible{outline:2px solid #367ba6;outline-offset:3px}
 #status{margin:14px 0 0;white-space:pre-wrap;font-size:13px}
 .footnote{margin-top:20px}
+.pricing{margin-top:20px;border-top:1px solid #e5e9ed;padding-top:16px}
+.pricing summary{cursor:pointer;font-weight:500}
+.price-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 16px}
 @media(max-width:500px){body{padding:24px 16px}#clear{margin-left:0}}
