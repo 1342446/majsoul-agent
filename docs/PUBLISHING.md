@@ -34,7 +34,7 @@ python scripts/package-public.py
 
 白名单排除`.git`、`research/`、旧安装包、HAR、日志与浏览器配置，并扫描部分常见凭据格式。它不能替代人工审查。完整源码中的截图是离线模拟，牌面为37张原创SVG，不打包早期游戏截图。
 
-0.6.0 发布从已提交的干净 Git 快照打包：先用 `git archive` 将选定提交解压至独立目录，在快照目录执行 `npm ci` 和 `python scripts/package-public.py`。不要直接打包带有未提交修改的工作区；白名单包含 `ARCHITECTURE.md`，因此本地未提交的架构草稿也必须由提交快照隔离。核对四个资产、三份 ZIP 的 SHA256，以及源码／manifest／profile／锁文件版本一致后，再上传 Release。
+0.8.0 延续已提交的干净 Git 快照发布流程：先用 `git archive` 将选定提交解压至独立目录，在快照目录执行 `npm ci` 和 `python scripts/package-public.py`，并运行 `npm run eval`。不要直接打包带有未提交修改的工作区；白名单包含 `ARCHITECTURE.md`，因此本地未提交的架构草稿也必须由提交快照隔离。核对四个资产、三份 ZIP 的 SHA256，以及源码／manifest／profile／锁文件版本一致后，再上传 Release。发布后匿名下载全部资产核对字节与 SHA256，确认 tag 指向、latest 与远端提交。
 
 ## 后续维护
 
