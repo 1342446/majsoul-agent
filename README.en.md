@@ -54,7 +54,7 @@ The independent `extension/profiles/agent.json` and `collector.json` profiles se
 2. Open `edge://extensions` in Edge or `chrome://extensions` in Chrome, and enable Developer mode.
 3. Choose **Load unpacked** and select that directory. For the dedicated extension ZIP, select the extracted directory that directly contains `manifest.json`.
 4. Refresh the Mahjong Soul page so the collector loads before the game connection is established, then enter a game or reopen a replay.
-5. The full edition shows a separate `Majsoul AI Analysis & Review Agent` card on the right and a collapsed `牌局` collector entry on the left. The collector-only edition shows the left entry. Drag either title to move it; positions are saved independently. Recent events and collection status start collapsed.
+5. The full edition shows a separate `Majsoul Agent` card on the right and a collapsed `牌局` collector entry on the left. The collector-only edition shows the left entry. Drag either title to move it; positions are saved independently. Recent events and collection status start collapsed.
 
 After updating, reload the extension in the browser’s extension manager, then refresh the game. Refreshing resets your replay position. Existing connections and previously downloaded replay data cannot be read retroactively.
 
