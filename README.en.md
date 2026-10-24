@@ -4,15 +4,21 @@
 
 A browser extension for the Mahjong Soul web client. Inspect the table in an in-game panel, keep local match results, and analyze locally or call your own LLM service manually or automatically when enabled. Built with Manifest V3, with a bundled MV3-adapted Pi Agent and no telemetry. LLM analysis is disabled by default.
 
-**Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
+**Bring your own model and API.** Set your endpoint URL, model ID, and API key to connect cloud models, third-party gateways, or local model services that provide an **OpenAI Chat Completions-compatible API with tools support**. Choose your provider freely. Requests go directly to your configured service without a relay operated by this project. [See setup instructions](#llm-setup).
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
 The stable **0.7.0** release includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Earlier profiles passed synthetic-game checks in isolated Edge and Chrome environments. For 0.6.0, Edge passed an actual extension flow with simulated responses, and Chrome passed offline UI checks; loading the Chrome MV3 extension was not completed in this round. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
 
-0.6.0 introduced Pi, optional round sessions, four optional read-only tools, follow-ups, and usage accounting, defaulting to single snapshots with tools disabled. 0.7.0 uses round sessions and six default read-only tools. Tool support depends on the configured API; real-service sessions, cache hits, and cost savings remain unverified. Automated tests do not establish real model quality or playing strength.
+**How analysis works in 0.7.0:** choose your model and service; the extension supplies authorized game data to its bundled Pi Agent. The harness freezes inputs and manages read-only tools, request budgets, cancellation, result validation, and traces. Use a cloud model, compatible gateway, or local server that supports **OpenAI Chat Completions and tools**. Model analysis starts disabled; local analysis needs no API.
 
-**New in 0.7.0**: model analysis uses round sessions and six default read-only tools; the API must support tools. Live runs allow at most 2 model requests, manual runs 3, with up to 4 tool calls each. One current baseline is followed by event, authorized JSON Patch and successful exchange appends; mid-round starts and coverage gaps do not fabricate history. 0.7.0 downloads include this update; older 0.6.0 packages retain their original behavior.
+Context follows the current round: send one current baseline, then append new events, authorized JSON Patch changes, and successful exchanges. Mid-round starts are identified explicitly. Coverage gaps and budget rotation create checkpoints without inventing history. Automatic hints and manual explanations use separate histories; rewinding a replay creates a clean branch.
+
+Six default read-only tools let the model query your authorized hand, public table, selected players' discards, round events, local discard comparisons, and danger evidence as needed. They read frozen authorized inputs, excluding opponents' concealed tiles and future replay information. Each live analysis allows at most **2 model requests**, each manual analysis **3**, with **4 tool calls** at most in either case, including the final model answer in the request budget. These are limits, not mandatory call counts.
+
+Chat Completions still resends necessary history. Incremental context does not guarantee smaller requests, cache hits, or lower costs. Usage uses only figures actually returned by the service; missing or partially failed totals and costs remain unknown. Synthetic tests do not establish real model quality or playing strength. Older 0.6.0 packages retain snapshot/tool-disabled defaults; 0.7.0 uses the flow above.
+
+**In development; not included in v0.7.0:** cross-round user memory is planned to update asynchronously only after a complete East-only or South match ends with sufficient evidence. Individual rounds would retain evidence only. Current round context is not a long-term user profile.
 
 The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
@@ -33,10 +39,12 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 ## Installation
 
+[Download v0.7.0, source, and SHA256 checksums](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent/releases/tag/v0.7.0)
+
 | Package | Capabilities |
 | --- | --- |
-| `majsoul-ai-analysis-and-review-agent-0.7.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
-| `majsoul-collector-0.7.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
+| [majsoul-ai-analysis-and-review-agent-0.7.0.zip](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent/releases/download/v0.7.0/majsoul-ai-analysis-and-review-agent-0.7.0.zip) | Collector, panel, match history, Agent, model settings, and harness traces |
+| [majsoul-collector-0.7.0.zip](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent/releases/download/v0.7.0/majsoul-collector-0.7.0.zip) | Collection, display, history, and export only; no model code, settings page, or model host permissions |
 
 Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
 
