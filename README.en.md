@@ -8,9 +8,9 @@ A browser extension for the Mahjong Soul web client. Inspect the table in an in-
 
 These language links switch the documentation only. The extension UI is currently in Simplified Chinese. English and Japanese documentation does not imply support for other regional game servers.
 
-The published **0.5.0** release includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Both installation profiles have passed synthetic-game checks in isolated Edge and Chrome environments. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
+The stable **0.6.0** release includes live/replay switching, local and model analysis, independent global reviews, configurable thinking and output limits, light/dark themes, and an on-demand collector window. Earlier profiles passed synthetic-game checks in isolated Edge and Chrome environments. For 0.6.0, Edge passed an actual extension flow with simulated responses, and Chrome passed offline UI checks; loading the Chrome MV3 extension was not completed in this round. Full live protocol coverage for the current Unity client, reconnection recovery, and the quality of real model advice remain unverified. No live recognition accuracy or playing strength is claimed.
 
-The current source version is **0.6.0**; the stable release remains **0.5.0**. Pi, round sessions, tools, follow-ups, and usage accounting below are new in the source and have not been released as a new stable version; existing 0.5.0 packages do not include them. Automated tests do not establish real model quality or playing strength.
+This release adds Pi, round sessions, four read-only tools, follow-ups, and usage accounting. Single snapshots and tools disabled remain the defaults. Tool support depends on the configured API; real-service sessions, cache hits, and cost savings remain unverified. Automated tests do not establish real model quality or playing strength.
 
 The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](https://github.com/oreki-L/majsoul-ai-analysis-and-review-agent), with the complete original private development history retained after sanitization. See the [history migration notes](docs/HISTORY.md) (Chinese).
 
@@ -18,7 +18,7 @@ The project is maintained at [oreki-L/majsoul-ai-analysis-and-review-agent](http
 
 ## Features
 
-**New in source**: model settings default to `snapshot`; optional `round` retains authorized context for the current round. Manual global reviews support follow-up questions; automatic hints do not reuse manual explanation history. Four optional read-only mahjong tools have fixed budgets. Configure per-million-token prices, export the latest 100 numeric usage records, or clear local sessions and usage. Missing information stays unknown.
+**New in 0.6.0**: model settings default to `snapshot`; optional `round` retains authorized context for the current round. Manual global reviews support follow-up questions; automatic hints do not reuse manual explanation history. Four optional read-only mahjong tools have fixed budgets. Configure per-million-token prices, export the latest 100 numeric usage records, or clear local sessions and usage. Missing information stays unknown.
 
 - **Bring your own model API:** customize the endpoint, model ID, and API key to use different compatible services. Select table information, all or selected discard pools, and optionally your own hand; preview the payload and manually request danger or discard advice.
 - **Floating analysis card:** a separate, persistent result card with a draggable title and saved position. Click candidate tiles to compare explanations; hand details, local efficiency tables, and traces stay folded. The collector starts collapsed and opens independently for discards, dora, and history.
@@ -33,8 +33,8 @@ Local history retains up to 20 matches and 100 hands per match, evicting the old
 
 | Package | Capabilities |
 | --- | --- |
-| `majsoul-ai-analysis-and-review-agent-0.5.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
-| `majsoul-collector-0.5.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
+| `majsoul-ai-analysis-and-review-agent-0.6.0.zip` | Collector, panel, match history, Agent, model settings, and harness traces |
+| `majsoul-collector-0.6.0.zip` | Collection, display, history, and export only; no model code, settings page, or model host permissions |
 
 Enable only one profile on a game page. The collector works independently and can export records for offline review. The profiles have separate local storage and do not migrate data automatically. The source `extension/` directory is the full edition; `npm run build` generates both loadable directories.
 
